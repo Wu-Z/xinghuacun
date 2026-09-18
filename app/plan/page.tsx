@@ -7,6 +7,7 @@ import MapCanvas from '@/components/MapCanvas'
 import RecommendList from '@/components/RecommendList'
 import RecommendSummary from '@/components/RecommendSummary'
 import RouteSummaryBar from '@/components/RouteSummaryBar'
+import StepBar from '@/components/StepBar'
 import StopDetail from '@/components/StopDetail'
 import TripTimeline from '@/components/TripTimeline'
 import { usePlan } from '@/lib/client/plan-session'
@@ -365,9 +366,12 @@ export default function PlanPage() {
     <main className="flex h-dvh overflow-hidden">
       <aside className="relative flex w-[430px] shrink-0 flex-col border-r border-line bg-paper">
         <div className="shrink-0 border-b border-line px-4 py-4">
-          <Link href="/" className="text-sm font-semibold text-ink hover:text-jade">
-            周边去哪
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-sm font-semibold text-ink hover:text-jade">
+              周边去哪
+            </Link>
+            <StepBar current={view === 'timeline' ? 'trip' : 'pick'} />
+          </div>
           <div className="mt-3">
             <RecommendSummary location={draft.label} value={draft.prefs} editHref="/" />
           </div>
@@ -469,17 +473,47 @@ export default function PlanPage() {
               excluded={excluded}
               meta={meta}
               lastExchange={lastExchange}
-              selectedCount={selectedOrder.length}
               busy={busy}
-              canFinalize={canFinalize(places, selectedOrder)}
               finalizeNote={finalizeNote}
               onToggle={togglePlace}
               onOpenDetail={setDetailName}
               onAsk={(name) => setAskTarget({ name })}
-              onFinalize={runFinalize}
             />
           )}
         </div>
+
+        {/*
+          两个「下一步」入口收在一个固定底栏里。
+          之前它们一个在列表底部（要滚动才看见）、一个在列表上方（很容易错过），
+          用户勾完地点不知道接下来该干嘛 —— 这是「难用」的主要来源之一。
+        */}
+        {view === 'list' && (canFinalize(places, selectedOrder) || selectedOrder.length >= 2) && (
+          <div className="shrink-0 space-y-2 border-t border-line bg-paper px-4 py-3">
+            {canFinalize(places, selectedOrder) && (
+              <>
+                <button
+                  onClick={runFinalize}
+                  disabled={busy}
+                  className="w-full rounded-lg bg-mist py-2 text-sm text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  把选中的 {selectedOrder.length} 个细化成站点
+                </button>
+                <p className="text-[11px] leading-relaxed text-ink-soft">
+                  选中的里如果有「含 N 个可玩点」的，细化后会拆成独立站点 ——
+                  只有拆开才能逐段规划路线。
+                </p>
+              </>
+            )}
+            {selectedOrder.length >= 2 && (
+              <button
+                onClick={() => setView('timeline')}
+                className="w-full rounded-lg bg-jade py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jade-deep"
+              >
+                看行程 →
+              </button>
+            )}
+          </div>
+        )}
 
         <StopDetail place={detail} onClose={() => setDetailName(null)} />
       </aside>

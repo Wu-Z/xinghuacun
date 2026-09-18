@@ -60,15 +60,6 @@ function streamOf(places: RecommendPlace[], tail: unknown[] = []): Response {
   ])
 }
 
-const ROUTE = {
-  mode: 'walking',
-  order: [] as string[],
-  legs: [],
-  totalDurationSeconds: 0,
-  totalDistanceMeters: 0,
-  polyline: [],
-}
-
 let recommendCalls: Record<string, unknown>[] = []
 
 beforeEach(() => {
@@ -91,10 +82,30 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url).includes('/api/route/plan')) {
-        return new Response(JSON.stringify(ROUTE), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
+        // 按请求里的 stops 回一条路线 —— order 必须非空，
+        // 否则时间轴拿不到站点，测不到「看行程」
+        const req = JSON.parse(String(init?.body ?? '{}')) as {
+          stops?: { id: string }[]
+          mode?: string
+        }
+        const stops = req.stops ?? []
+        return new Response(
+          JSON.stringify({
+            mode: req.mode ?? 'walking',
+            order: stops.map((s) => s.id),
+            legs: stops.map(() => ({
+              fromIndex: 0,
+              toIndex: 0,
+              durationSeconds: 600,
+              distanceMeters: 3000,
+              polyline: [],
+            })),
+            totalDurationSeconds: stops.length * 600,
+            totalDistanceMeters: stops.length * 3000,
+            polyline: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
       }
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
       recommendCalls.push(body)
@@ -228,5 +239,31 @@ describe('结果页 · 中途失败与重试', () => {
     await waitFor(() => expect(recommendCalls).toHaveLength(3), { timeout: 3000 })
     // 第三次调用必须是 finalize —— 这正是那个 bug 会答错的地方
     expect(recommendCalls[2].task).toBe('finalize')
+  })
+})
+
+describe('结果页 · 下一步引导', () => {
+  it('勾选不足 2 个时不出现「看行程」', async () => {
+    nextResponses = [streamOf([COMPOSITE, PLAIN])]
+    render(<PlanPage />)
+    await waitForCards(2)
+
+    await clickButton(/选择 集美学村/)
+    await waitFor(() => expect(screen.queryByRole('button', { name: /看行程/ })).toBeNull())
+  })
+
+  it('勾满 2 个后「看行程」出现，点它切到时间轴', async () => {
+    nextResponses = [streamOf([COMPOSITE, PLAIN])]
+    render(<PlanPage />)
+    await waitForCards(2)
+
+    await clickButton(/选择 集美学村/)
+    await clickButton(/选择 海堤路/)
+
+    const cta = await screen.findByRole('button', { name: /看行程/ })
+    cta.click()
+
+    // 切过去后应该看到时间轴的合计行
+    await waitFor(() => expect(screen.getByText(/路上共/)).toBeTruthy(), { timeout: 3000 })
   })
 })

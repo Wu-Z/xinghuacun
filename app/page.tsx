@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import ChipGroup from '@/components/ChipGroup'
 import MapCanvas from '@/components/MapCanvas'
+import StepBar from '@/components/StepBar'
 import { setPlan, usePlan, type PlanDraft } from '@/lib/client/plan-session'
 import { toGcj02 } from '@/lib/core/coordinate'
 import type { LatLng, Preferences } from '@/lib/core/model'
@@ -33,6 +34,15 @@ const CROWD_VALUE: Record<string, Preferences['crowdTolerance']> = {
 
 function toggle(list: string[], item: string): string[] {
   return list.includes(item) ? list.filter((x) => x !== item) : [...list, item]
+}
+
+/** 发送图标。用箭头而不是放大镜：路线上的 `1 → 2` 也是这个形状，内部一致 */
+function ArrowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2">
+      <path d="M5 12h13M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
 }
 
 export default function Home() {
@@ -100,8 +110,10 @@ export default function Home() {
     )
   }, [update])
 
+  const ready = point !== null
+
   const submit = () => {
-    if (!point) {
+    if (!ready) {
       setError('先选一个出发点')
       return
     }
@@ -110,81 +122,115 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-dvh bg-paper">
-      <div className="mx-auto flex min-h-dvh max-w-[640px] flex-col justify-center px-6 py-14">
-        <h1 className="text-lg font-semibold text-ink">周边去哪</h1>
+    <main className="flex min-h-dvh items-center justify-center bg-paper px-6 py-16">
+      <div className="w-full max-w-[680px]">
+        <StepBar current="ask" />
+        <h1 className="mt-5 text-xl font-semibold text-ink">周边去哪</h1>
         <p className="mt-2 text-sm leading-relaxed text-ink-soft">
           一句话说清想怎么玩。我挑出真值得去的地方，并排好拜访顺序。
         </p>
 
-        {/* 输入框是这一页的主角 */}
-        <textarea
-          value={prefs.rawRequest}
-          onChange={(e) => setPrefs({ ...prefs, rawRequest: e.target.value })}
-          rows={3}
-          autoFocus
-          placeholder="例如：想找能坐下来喝咖啡、人不多的老街区"
-          className="mt-7 w-full resize-none rounded-xl border border-line bg-paper px-4 py-4 text-[15px] leading-relaxed text-ink outline-none transition-colors placeholder:text-ink-soft/60 focus:border-jade"
-        />
+        {/* 输入框是这一页的主角：发送图标内嵌右下角 */}
+        <div className="group relative mt-8 rounded-2xl border border-line bg-paper transition-colors focus-within:border-jade">
+          <textarea
+            value={prefs.rawRequest}
+            onChange={(e) => setPrefs({ ...prefs, rawRequest: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit()
+            }}
+            rows={2}
+            autoFocus
+            placeholder="例如：想找能坐下来喝咖啡、人不多的老街区"
+            className="block w-full resize-none bg-transparent px-5 pb-12 pt-5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-ink-soft/60"
+          />
 
-        <div className="mt-5 flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-xs text-ink-soft">出发点</div>
-            <div
-              className={`mt-1 truncate text-sm font-medium ${point ? 'text-ink' : 'text-ink-soft'}`}
+          <div className="absolute inset-x-5 bottom-4 flex items-center gap-3">
+            {!ready && (
+              <span className="text-xs text-ink-soft">先选出发点</span>
+            )}
+            <button
+              type="button"
+              onClick={submit}
+              aria-label="帮我推荐"
+              title="帮我推荐"
+              className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
+                ready
+                  ? 'bg-jade text-white hover:bg-jade-deep active:scale-95'
+                  : 'cursor-not-allowed bg-mist text-ink-soft/50'
+              }`}
             >
-              {point ? label || '已选位置' : '还没有选'}
-            </div>
+              <ArrowIcon />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={useGeolocation}
-            disabled={locating}
-            className="shrink-0 rounded-md bg-mist px-3 py-2 text-sm text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:text-ink-soft"
-          >
-            {locating ? '定位中…' : '用我的位置'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setPicking(true)}
-            className="shrink-0 rounded-md bg-mist px-3 py-2 text-sm text-ink transition-colors hover:bg-line"
-          >
-            地图选点
-          </button>
         </div>
 
-        <div className="mt-7 space-y-5">
+        {/* 标签紧贴在输入框下面，视觉上属于同一个输入面板 */}
+        <div className="mt-3 space-y-3">
           <ChipGroup
             label="想干什么"
             options={INTENTS}
             selected={prefs.intents}
             onToggle={(v) => setPrefs({ ...prefs, intents: toggle(prefs.intents, v) })}
           />
-          <ChipGroup
-            label="能花多久"
-            options={BUDGETS}
-            selected={prefs.timeBudget ? [prefs.timeBudget] : []}
-            onToggle={(v) => setPrefs({ ...prefs, timeBudget: prefs.timeBudget === v ? null : v })}
-          />
-          <ChipGroup
-            label="怎么去"
-            options={MODES}
-            selected={prefs.travelMode}
-            onToggle={(v) => setPrefs({ ...prefs, travelMode: toggle(prefs.travelMode, v) })}
-          />
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            <ChipGroup
+              label="能花多久"
+              options={BUDGETS}
+              selected={prefs.timeBudget ? [prefs.timeBudget] : []}
+              onToggle={(v) => setPrefs({ ...prefs, timeBudget: prefs.timeBudget === v ? null : v })}
+            />
+            <ChipGroup
+              label="怎么去"
+              options={MODES}
+              selected={prefs.travelMode}
+              onToggle={(v) => setPrefs({ ...prefs, travelMode: toggle(prefs.travelMode, v) })}
+            />
+          </div>
+        </div>
+
+        {/* 出发点 */}
+        <div className="mt-8 rounded-xl bg-mist px-4 py-3.5">
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-ink-soft">出发点</div>
+              <div
+                className={`mt-0.5 truncate text-sm font-medium ${
+                  ready ? 'text-ink' : 'text-ink-soft'
+                }`}
+              >
+                {ready ? label || '已选位置' : '还没选'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={useGeolocation}
+              disabled={locating}
+              className="shrink-0 rounded-md bg-paper px-3 py-2 text-sm text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:text-ink-soft"
+            >
+              {locating ? '定位中…' : '用我的位置'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPicking(true)}
+              className="shrink-0 rounded-md bg-paper px-3 py-2 text-sm text-ink transition-colors hover:bg-line"
+            >
+              地图选点
+            </button>
+          </div>
         </div>
 
         <button
           type="button"
           onClick={() => setMore((v) => !v)}
           aria-expanded={more}
-          className="mt-5 self-start text-xs text-ink-soft underline decoration-line underline-offset-4 hover:text-ink"
+          className="mt-4 flex items-center gap-1 text-xs text-ink-soft transition-colors hover:text-ink"
         >
+          <span className={`transition-transform ${more ? 'rotate-90' : ''}`}>▸</span>
           {more ? '收起' : '更多（同行人 / 拥挤度 / 想去哪）'}
         </button>
 
         {more && (
-          <div className="mt-4 space-y-5">
+          <div className="mt-4 space-y-4 pl-4">
             <div className="flex items-center gap-3">
               <div className="w-20 shrink-0 text-xs text-ink-soft">同行人数</div>
               <input
@@ -205,10 +251,7 @@ export default function Home() {
               selected={prefs.crowdTolerance ? [CROWD_LABEL[prefs.crowdTolerance]] : []}
               onToggle={(v) => {
                 const next = CROWD_VALUE[v]
-                setPrefs({
-                  ...prefs,
-                  crowdTolerance: prefs.crowdTolerance === next ? null : next,
-                })
+                setPrefs({ ...prefs, crowdTolerance: prefs.crowdTolerance === next ? null : next })
               }}
             />
 
@@ -225,14 +268,6 @@ export default function Home() {
         )}
 
         {error && <p className="mt-5 text-sm text-red-700">{error}</p>}
-
-        <button
-          type="button"
-          onClick={submit}
-          className="mt-8 w-full rounded-xl bg-jade py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-jade-deep"
-        >
-          帮我推荐
-        </button>
       </div>
 
       {/* 地图选点：全屏浮层，选完即关。首页本体不放地图，免得跟输入框抢注意力 */}

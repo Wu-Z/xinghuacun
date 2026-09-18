@@ -10,10 +10,7 @@ type Props = {
   meta: { assumptions: string[]; unverified: string[] }
   /** 上一次追问的回答与原话，有值时在顶部提示 */
   lastExchange: { answer: string; removed: { name: string; reason: string }[] } | null
-  selectedCount: number
   busy: boolean
-  /** 选中的里面还有没有可拆的复合地点 —— 没有就不该给细化按钮 */
-  canFinalize: boolean
   /**
    * 刚细化完的账：列表原有几条、用户当初选了几个、细化出几个站点。
    * `selected` 必须是**细化前**的数量 —— 细化后 selectedOrder 会被继承重算，
@@ -23,7 +20,6 @@ type Props = {
   onToggle: (name: string) => void
   onOpenDetail: (name: string) => void
   onAsk: (name: string | null) => void
-  onFinalize: () => void
 }
 
 function Fold({ title, children }: { title: string; children: React.ReactNode }) {
@@ -68,14 +64,11 @@ export default function RecommendList({
   excluded,
   meta,
   lastExchange,
-  selectedCount,
   busy,
-  canFinalize,
   finalizeNote,
   onToggle,
   onOpenDetail,
   onAsk,
-  onFinalize,
 }: Props) {
   const unverified = places.filter((p) => !p.verified).length
   const sections = buildSections(places)
@@ -160,24 +153,6 @@ export default function RecommendList({
           ),
         )}
       </div>
-
-      {/* 选好之后就细化 —— 这是路径规划的前置步骤。
-          只在选中的里面还有可拆的复合地点时才给按钮，否则点下去毫无反应 */}
-      {canFinalize && selectedCount > 0 && (
-        <div className="border-t border-line bg-paper px-4 py-3">
-          <button
-            onClick={onFinalize}
-            disabled={busy}
-            className="w-full rounded-lg bg-jade py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jade-deep disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {busy ? '正在细化…' : `把选中的 ${selectedCount} 个细化成站点`}
-          </button>
-          <p className="mt-2 text-[11px] leading-relaxed text-ink-soft">
-            选中的地点里如果有「含 N 个可玩点」的，细化后会拆成独立站点 ——
-            只有拆开才能逐段规划路线。单一地点原样保留。
-          </p>
-        </div>
-      )}
 
       {/* skill 主动说明了排除了什么、依据什么假设 */}
       {excluded.length > 0 && (
