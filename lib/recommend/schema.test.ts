@@ -152,7 +152,11 @@ describe('amap_url 安全性', () => {
   it('接受高德域名下的 https 链接', () => {
     expect(withUrl('https://uri.amap.com/search?keyword=x').ok).toBe(true)
     expect(withUrl('https://www.amap.com/place/B123').ok).toBe(true)
-    expect(withUrl('http://amap.com/x').ok).toBe(true)
+    expect(withUrl('https://amap.com/x').ok).toBe(true)
+  })
+
+  it('拒绝 http —— 高德支持 https，没理由放宽', () => {
+    expect(withUrl('http://uri.amap.com/search').ok).toBe(false)
   })
 
   it('拒绝 javascript: —— 这是提示词注入到 XSS 的主路径', () => {

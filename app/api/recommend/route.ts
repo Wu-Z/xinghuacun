@@ -19,14 +19,19 @@ export async function POST(req: Request) {
   try {
     const out = await recommend(body)
     if (!out.ok) {
+      // 这些 reason 是我们自己写的（「未配置 DEEPSEEK_MODEL…」这类），
+      // 安全且可操作，直接回给用户 —— 失败必须说清原因，不能只给个错误码
       return Response.json({ error: '推荐失败', reason: out.failure.reason }, { status: 502 })
     }
     return Response.json(out.value)
   } catch (error) {
     // 不静默吞错：上一轮 QPS 事故里，正因为 catch 吞掉错误，
-    // 一个限流失败被伪装成了「0 分钟 0.0 公里」的路线
+    // 一个限流失败被伪装成了「0 分钟 0.0 公里」的路线。
+    // 但未预期的异常信息可能含内部路径等细节，只留日志，不回显给客户端。
     console.error('[api/recommend] 未预期错误', error)
-    const reason = error instanceof Error ? error.message : '未知错误'
-    return Response.json({ error: '推荐失败', reason }, { status: 502 })
+    return Response.json(
+      { error: '推荐失败', reason: '服务内部错误，详情见服务端日志' },
+      { status: 502 },
+    )
   }
 }

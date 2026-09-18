@@ -1,6 +1,7 @@
 'use client'
 
 import type { RecommendPlace } from '@/lib/core/model'
+import AmapLink from './AmapLink'
 
 type Props = { place: RecommendPlace | null; onClose: () => void }
 
@@ -76,14 +77,9 @@ export default function StopDetail({ place, onClose }: Props) {
           </>
         )}
 
-        <a
-          href={place.amapUrl}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="mt-3 inline-block text-xs text-jade underline underline-offset-2"
-        >
+        <AmapLink url={place.amapUrl} className="mt-3 inline-block text-xs text-jade underline underline-offset-2">
           在高德地图中打开
-        </a>
+        </AmapLink>
       </div>
     </div>
   )

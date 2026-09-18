@@ -1,6 +1,7 @@
 'use client'
 
 import type { RecommendPlace } from '@/lib/core/model'
+import AmapLink from './AmapLink'
 
 type Props = {
   place: RecommendPlace
@@ -90,14 +91,9 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail }: 
         ) : (
           <div className="mt-2 text-[11.5px] leading-relaxed text-amber-700">
             高德未能核实到该地点，无法上图、不参与路线规划。
-            <a
-              href={place.amapUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="underline underline-offset-2"
-            >
+            <AmapLink url={place.amapUrl} className="underline underline-offset-2">
               在高德地图中查看
-            </a>
+            </AmapLink>
           </div>
         )}
       </button>
