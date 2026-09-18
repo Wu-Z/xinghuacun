@@ -8,8 +8,10 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['lib/**/*.test.ts', 'app/**/*.test.ts'],
-    // 本版所有自动化测试只覆盖纯逻辑与字段映射，不测 DOM
+    include: ['lib/**/*.test.ts', 'app/**/*.test.{ts,tsx}', 'components/**/*.test.{ts,tsx}'],
+    // 默认 node（绝大多数测试是纯逻辑）。
+    // 组件测试用文件头的 `// @vitest-environment jsdom` 单独切换，
+    // 免得让所有纯逻辑测试都背上 jsdom 的启动开销。
     environment: 'node',
   },
 })
