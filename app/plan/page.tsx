@@ -1,15 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FollowupBar from '@/components/FollowupBar'
 import MapCanvas from '@/components/MapCanvas'
 import RecommendList from '@/components/RecommendList'
 import RecommendSummary from '@/components/RecommendSummary'
 import RouteSummaryBar from '@/components/RouteSummaryBar'
 import StopDetail from '@/components/StopDetail'
+import TripTimeline from '@/components/TripTimeline'
 import { usePlan } from '@/lib/client/plan-session'
 import { readRecommendStream } from '@/lib/client/recommend-stream'
+import { buildItinerary } from '@/lib/core/itinerary'
 import { pickRouteMode } from '@/lib/core/route-mode'
 import { applyDiff } from '@/lib/recommend/apply-diff'
 import { canFinalize } from '@/lib/recommend/can-finalize'
@@ -53,6 +55,11 @@ export default function PlanPage() {
   const [selectedOrder, setSelectedOrder] = useState<string[]>([])
   const [routeState, setRouteState] = useState<{ key: string; route: Route } | null>(null)
   const [detailName, setDetailName] = useState<string | null>(null)
+
+  /** 终点。默认不设 —— 用户不去别处时末站就是结束 */
+  const [end, setEnd] = useState<{ point: LatLng; label: string } | null>(null)
+  const [pickingEnd, setPickingEnd] = useState(false)
+  const [view, setView] = useState<'list' | 'timeline'>('list')
 
   const reqIdRef = useRef(0)
   const startedRef = useRef(false)
@@ -264,9 +271,10 @@ export default function PlanPage() {
   }, [selectedOrder, places, runStreaming])
 
   // ── 路线：勾选的是「一组点」，拜访顺序由服务端算最优后返回 ──
+  const endKey = end ? `${end.point.lng},${end.point.lat}` : ''
   const routeKey =
     selectedOrder.length >= 2 && draft
-      ? `${selectedOrder.join(',')}|${draft.point.lng},${draft.point.lat}`
+      ? `${selectedOrder.join(',')}|${draft.point.lng},${draft.point.lat}|${endKey}`
       : null
   const route = routeState && routeState.key === routeKey ? routeState.route : null
   const visitOrder = route?.order ?? selectedOrder
@@ -290,6 +298,7 @@ export default function PlanPage() {
           origin: draft.point,
           stops,
           mode: pickRouteMode(draft.prefs.travelMode),
+          ...(end ? { end: end.point } : {}),
         }),
         signal: controller.signal,
       })
@@ -305,7 +314,27 @@ export default function PlanPage() {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [routeKey, draft, places, selectedOrder])
+  }, [routeKey, draft, places, selectedOrder, end])
+
+  /** 出行时间轴：由路线各段拼成，只给能确证的行程，不排时间表 */
+  const itinerary = useMemo(() => {
+    if (!route || !draft || route.order.length < 2) return null
+
+    return buildItinerary({
+      origin: { name: draft.label, point: draft.point },
+      end: end ? { name: end.label, point: end.point } : null,
+      stops: route.order.map((name) => {
+        const place = places.find((p) => p.name === name)
+        return { id: name, name, point: place?.point ?? { lng: 0, lat: 0 } }
+      }),
+      legs: route.legs.map((l) => ({
+        durationSeconds: l.durationSeconds,
+        distanceMeters: l.distanceMeters,
+        degraded: l.degraded,
+      })),
+      mode: route.mode,
+    })
+  }, [route, draft, end, places])
 
   const togglePlace = useCallback((name: string) => {
     setSelectedOrder((prev) =>
@@ -399,7 +428,41 @@ export default function PlanPage() {
             </div>
           )}
 
-          {places.length > 0 && (
+          {/* 有路线了才给切换：没路线时时间轴是空的，没必要露出来 */}
+          {itinerary && (
+            <div className="flex shrink-0 gap-1 border-b border-line px-4 py-2">
+              {(
+                [
+                  ['list', '列表'],
+                  ['timeline', '出行'],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setView(key)}
+                  aria-pressed={view === key}
+                  className={`rounded-md px-3 py-1 text-xs transition-colors ${
+                    view === key ? 'bg-jade text-white' : 'text-ink-soft hover:bg-mist'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {view === 'timeline' && itinerary && (
+            <TripTimeline
+              itinerary={itinerary}
+              places={places}
+              hasEnd={end !== null}
+              onSetEnd={() => setPickingEnd(true)}
+              onClearEnd={() => setEnd(null)}
+              onOpenDetail={setDetailName}
+            />
+          )}
+
+          {view === 'list' && places.length > 0 && (
             <RecommendList
               places={places}
               visitOrder={visitOrder}
@@ -432,6 +495,35 @@ export default function PlanPage() {
         />
         <RouteSummaryBar visitOrder={visitOrder} route={route} />
       </div>
+
+      {/* 终点选点：全屏浮层，选完即关（与首页的地图选点同一套做法） */}
+      {pickingEnd && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-paper">
+          <div className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
+            <span className="text-sm font-medium text-ink">在地图上点一下，作为终点</span>
+            <button
+              type="button"
+              onClick={() => setPickingEnd(false)}
+              className="ml-auto rounded-md px-3 py-1.5 text-sm text-ink-soft hover:bg-mist hover:text-ink"
+            >
+              取消
+            </button>
+          </div>
+          <div className="relative flex-1">
+            <MapCanvas
+              origin={draft.point}
+              places={places}
+              visitOrder={visitOrder}
+              route={route}
+              picking
+              onPickLocation={(p) => {
+                setEnd({ point: p, label: '地图所选终点' })
+                setPickingEnd(false)
+              }}
+            />
+          </div>
+        </div>
+      )}
     </main>
   )
 }
