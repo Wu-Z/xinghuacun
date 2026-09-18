@@ -50,7 +50,12 @@ export function buildUserMessage(
   }
 
   if (req.task === 'refine') {
-    lines.push(`追问范围：${req.focus ? `单个地点（${req.focus.name}）` : '整批'}`)
+    // 单点追问必须带上地址与类别 —— 只给名字会有同名歧义
+    lines.push(
+      req.focus
+        ? `追问范围：单个地点「${req.focus.name}」（${req.focus.category}，${req.focus.address}）`
+        : '追问范围：整批',
+    )
     lines.push(`追问：${req.followup ?? ''}`)
     if (req.previous?.length) {
       lines.push(`当前列表：${req.previous.map((p) => p.name).join('、')}`)
