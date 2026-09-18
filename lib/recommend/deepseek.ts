@@ -16,7 +16,19 @@ type Options = {
   fetchImpl?: typeof fetch
 }
 
-const DEFAULT_MAX_TOKENS = 8192
+/**
+ * 默认值必须给得宽裕，原因是实测发现的两件事：
+ *
+ * 1. `deepseek-flash` 是**推理模型**，它会在输出 JSON 之前先做内部推理，
+ *    而推理 token 与正文共用同一个 max_tokens 预算（响应里体现为
+ *    `completion_tokens_details.reasoning_tokens` 与 `reasoning_content`）。
+ * 2. 这个 skill 的输出很重 —— 每条推荐都带 fit 证据、crowd_note、itinerary、
+ *    trade_off，外加 excluded 与 meta，中文 JSON 本身就上千 token。
+ *
+ * 原来设 8192 时实际撞过 `finish_reason: 'length'`，JSON 被截断后整次推荐失败。
+ * 实测 16384 / 32768 都被接受，且 max_tokens 只是上限、用不到不额外计费。
+ */
+const DEFAULT_MAX_TOKENS = 16384
 
 /**
  * 调 DeepSeek 的 OpenAI 兼容接口，要求返回 JSON。
@@ -86,7 +98,9 @@ export async function callDeepseekJson(opts: Options): Promise<DeepseekResult> {
       ok: false,
       failure: {
         kind: 'invalid-json',
-        detail: truncated ? '回包被 max_tokens 截断，JSON 不完整' : '回包不是合法 JSON',
+        detail: truncated
+          ? '回包被 max_tokens 截断。该模型是推理模型，推理也占额度，调大 .env.local 里的 DEEPSEEK_MAX_TOKENS 再试'
+          : '回包不是合法 JSON',
       },
     }
   }

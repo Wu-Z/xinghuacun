@@ -66,12 +66,17 @@ export async function recommend(req: RecommendRequest): Promise<RecommendOutcome
     return { ok: false, failure: { reason: '无法确定出发点所在城市，请换一个位置试试' } }
   }
 
+  // 推理模型 + 重输出，额度给得宽裕些；用不到不额外计费
+  const envMax = Number(process.env.DEEPSEEK_MAX_TOKENS)
+  const maxTokens = Number.isFinite(envMax) && envMax > 0 ? envMax : undefined
+
   const call = await callDeepseekJson({
     apiKey,
     baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
     model,
     system: loadPrompt(),
     user: buildUserMessage(req, place),
+    maxTokens,
   })
 
   if (!call.ok) {
