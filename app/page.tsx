@@ -4,16 +4,12 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import ChipGroup from '@/components/ChipGroup'
 import MapCanvas from '@/components/MapCanvas'
-import StepBar from '@/components/StepBar'
+import SparkleIcon from '@/components/SparkleIcon'
 import { setPlan, usePlan, type PlanDraft } from '@/lib/client/plan-session'
 import { toGcj02 } from '@/lib/core/coordinate'
 import type { LatLng, Preferences } from '@/lib/core/model'
 
 const GEO_TIMEOUT_MS = 5000
-
-const INTENTS = ['拍照', '放松', '遛娃', '约会', '朋友聚会', '运动', '一个人待着']
-const BUDGETS = ['1 小时内', '半天', '全天']
-const MODES = ['步行', '骑行', '驾车', '打车', '公共交通']
 
 const EMPTY_PREFS: Preferences = {
   intents: [],
@@ -30,19 +26,6 @@ const CROWD_VALUE: Record<string, Preferences['crowdTolerance']> = {
   低: 'low',
   一般: 'medium',
   无所谓: 'high',
-}
-
-function toggle(list: string[], item: string): string[] {
-  return list.includes(item) ? list.filter((x) => x !== item) : [...list, item]
-}
-
-/** 发送图标。用箭头而不是放大镜：路线上的 `1 → 2` 也是这个形状，内部一致 */
-function ArrowIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2">
-      <path d="M5 12h13M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
 }
 
 export default function Home() {
@@ -124,13 +107,12 @@ export default function Home() {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-paper px-6 py-16">
       <div className="w-full max-w-[680px]">
-        <StepBar current="ask" />
-        <h1 className="mt-5 text-xl font-semibold text-ink">周边去哪</h1>
+        <h1 className="text-xl font-semibold text-ink">周边去哪</h1>
         <p className="mt-2 text-sm leading-relaxed text-ink-soft">
           一句话说清想怎么玩。我挑出真值得去的地方，并排好拜访顺序。
         </p>
 
-        {/* 输入框是这一页的主角：发送图标内嵌右下角 */}
+        {/* 输入框是这一页的主角 */}
         <div className="group relative mt-8 rounded-2xl border border-line bg-paper transition-colors focus-within:border-jade">
           <textarea
             value={prefs.rawRequest}
@@ -138,16 +120,14 @@ export default function Home() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit()
             }}
-            rows={2}
+            rows={3}
             autoFocus
             placeholder="例如：想找能坐下来喝咖啡、人不多的老街区"
-            className="block w-full resize-none bg-transparent px-5 pb-12 pt-5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-ink-soft/60"
+            className="block w-full resize-none bg-transparent px-5 pb-14 pt-5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-ink-soft/60"
           />
 
           <div className="absolute inset-x-5 bottom-4 flex items-center gap-3">
-            {!ready && (
-              <span className="text-xs text-ink-soft">先选出发点</span>
-            )}
+            {!ready && <span className="text-xs text-ink-soft">先选出发点</span>}
             <button
               type="button"
               onClick={submit}
@@ -159,37 +139,13 @@ export default function Home() {
                   : 'cursor-not-allowed bg-mist text-ink-soft/50'
               }`}
             >
-              <ArrowIcon />
+              <SparkleIcon className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        {/* 标签紧贴在输入框下面，视觉上属于同一个输入面板 */}
-        <div className="mt-3 space-y-3">
-          <ChipGroup
-            label="想干什么"
-            options={INTENTS}
-            selected={prefs.intents}
-            onToggle={(v) => setPrefs({ ...prefs, intents: toggle(prefs.intents, v) })}
-          />
-          <div className="flex flex-wrap gap-x-6 gap-y-3">
-            <ChipGroup
-              label="能花多久"
-              options={BUDGETS}
-              selected={prefs.timeBudget ? [prefs.timeBudget] : []}
-              onToggle={(v) => setPrefs({ ...prefs, timeBudget: prefs.timeBudget === v ? null : v })}
-            />
-            <ChipGroup
-              label="怎么去"
-              options={MODES}
-              selected={prefs.travelMode}
-              onToggle={(v) => setPrefs({ ...prefs, travelMode: toggle(prefs.travelMode, v) })}
-            />
-          </div>
-        </div>
-
         {/* 出发点 */}
-        <div className="mt-8 rounded-xl bg-mist px-4 py-3.5">
+        <div className="mt-4 rounded-xl bg-mist px-4 py-3.5">
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <div className="text-xs text-ink-soft">出发点</div>

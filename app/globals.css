@@ -70,6 +70,27 @@ body {
   animation: xhc-rise 200ms ease-out;
 }
 
+/*
+ * 等待模型返回时的星芒脉动。
+ * 它替代了原来那句静止不动的「正在检索与思考…」—— 二十秒里界面一动不动，
+ * 用户会以为卡死了。动起来才说明「它在干活」。
+ */
+@keyframes xhc-sparkle {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8) rotate(-10deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1) rotate(10deg);
+  }
+}
+
+.anim-sparkle {
+  animation: xhc-sparkle 1.4s ease-in-out infinite;
+}
+
 /* 键盘焦点必须看得见 */
 :focus-visible {
   outline: 2px solid var(--color-jade);
@@ -82,5 +103,15 @@ body {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /*
+   * 上面那条 duration 只能压住「跑一次」的动画。
+   * `.anim-sparkle` 是 infinite 的：0.01ms 一轮意味着每帧跑完上千轮，
+   * 停在哪个相位全看运气 —— 结果不是静止，而是每帧闪一次，比原来更糟。
+   * 直接停掉，让它停在完整不透明的那一帧。
+   */
+  .anim-sparkle {
+    animation: none !important;
   }
 }

@@ -1,13 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FollowupBar from '@/components/FollowupBar'
 import MapCanvas from '@/components/MapCanvas'
 import RecommendList from '@/components/RecommendList'
 import RecommendSummary from '@/components/RecommendSummary'
 import RouteSummaryBar from '@/components/RouteSummaryBar'
-import StepBar from '@/components/StepBar'
+import SparkleIcon from '@/components/SparkleIcon'
 import StopDetail from '@/components/StopDetail'
 import TripTimeline from '@/components/TripTimeline'
 import { usePlan } from '@/lib/client/plan-session'
@@ -29,6 +29,24 @@ const EMPTY_META: RecommendMeta = { assumptions: [], unverified: [] }
 // 模块级常量：写成 `?? []` 会让每次渲染都产生新引用，依赖它们的 effect 每帧都重跑
 const NO_PLACES: RecommendPlace[] = []
 const NO_EXCLUDED: { name: string; reason: string }[] = []
+
+/**
+ * 等待模型返回时的反馈。
+ *
+ * 星芒用发按钮上那颗（`SparkleIcon`），并让它动起来 —— 用户刚点完那颗星芒，
+ * 下一页看到同一颗在转，因果是连着的。原来那颗静止的脉冲小圆点做不到这件事，
+ * 而首屏可能要等二十秒，界面一动不动会被当成卡死。
+ *
+ * role="status" 是给屏幕阅读器的：纯视觉动画不播报，读屏用户会全程听不到任何动静。
+ */
+function Working({ children }: { children: ReactNode }) {
+  return (
+    <span role="status" className="flex items-center gap-2">
+      <SparkleIcon className="anim-sparkle h-4 w-4 shrink-0 text-jade" />
+      {children}
+    </span>
+  )
+}
 
 export default function PlanPage() {
   const draft = usePlan()
@@ -366,12 +384,9 @@ export default function PlanPage() {
     <main className="flex h-dvh overflow-hidden">
       <aside className="relative flex w-[430px] shrink-0 flex-col border-r border-line bg-paper">
         <div className="shrink-0 border-b border-line px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-sm font-semibold text-ink hover:text-jade">
-              周边去哪
-            </Link>
-            <StepBar current={view === 'timeline' ? 'trip' : 'pick'} />
-          </div>
+          <Link href="/" className="text-sm font-semibold text-ink hover:text-jade">
+            周边去哪
+          </Link>
           <div className="mt-3">
             <RecommendSummary location={draft.label} value={draft.prefs} editHref="/" />
           </div>
@@ -389,16 +404,16 @@ export default function PlanPage() {
         <div className="flex-1 overflow-y-auto">
           {/* 流式：给出真实阶段，而不是一句静态的「正在处理」 */}
           {busy && places.length === 0 && (
-            <div className="flex items-center gap-2 px-4 py-6 text-sm text-ink-soft">
-              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-jade" />
-              {stage === 'generating' ? '正在生成地点…' : '正在检索与思考…'}
+            <div className="px-4 py-6 text-sm text-ink-soft">
+              <Working>
+                {stage === 'generating' ? '正在生成地点…' : '正在检索与思考…'}
+              </Working>
             </div>
           )}
 
           {busy && places.length > 0 && (
-            <div className="flex items-center gap-2 border-b border-line bg-mist px-4 py-2 text-[11.5px] text-ink-soft">
-              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-jade" />
-              已生成 {places.length} 条，还在继续…
+            <div className="border-b border-line bg-mist px-4 py-2 text-[11.5px] text-ink-soft">
+              <Working>已生成 {places.length} 条，还在继续…</Working>
             </div>
           )}
 

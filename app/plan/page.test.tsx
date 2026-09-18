@@ -158,6 +158,62 @@ describe('结果页 · 首屏流式', () => {
   })
 })
 
+// ── 等待反馈 ──────────────────────────────────────────────
+// 首屏可能要等二十秒。这期间界面必须让人看出「它在干活」：
+// 一个在动的星芒 + 一句会随阶段变的文案，而不是一行静止的字。
+
+// 必须在用例里现取：beforeEach 才把 stub 装上，模块顶层拿到的还是原生 fetch
+const fetchMock = () =>
+  globalThis.fetch as unknown as { mockReturnValueOnce: (v: unknown) => void }
+
+/** 一条能「吐一半、停住」的 NDJSON 流，用来观察流式进行中的那一帧 */
+function gatedStream() {
+  const encoder = new TextEncoder()
+  let push: (event: unknown) => void = () => {}
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      push = (event) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
+    },
+  })
+  return {
+    res: new Response(body, { status: 200, headers: { 'content-type': 'application/x-ndjson' } }),
+    push: (event: unknown) => push(event),
+  }
+}
+
+describe('结果页 · 等待反馈', () => {
+  it('等待首个地点时，等待区是带星芒的状态区，而不是静止的文案', async () => {
+    // 把首屏请求挂住，否则这一帧根本来不及被观察到
+    let release: (r: Response) => void = () => {}
+    fetchMock().mockReturnValueOnce(new Promise<Response>((r) => (release = r)))
+
+    render(<PlanPage />)
+
+    const status = await screen.findByRole('status')
+    expect(status.textContent).toContain('正在检索与思考…')
+    // 星芒必须在场：等待期间没有任何东西在动，用户会以为卡死了
+    expect(status.querySelector('svg')).toBeTruthy()
+
+    release(streamOf([COMPOSITE]))
+    await waitForCards(1)
+  })
+
+  it('地点逐条到达、仍在等待时，继续等待的提示同样在动', async () => {
+    const gate = gatedStream()
+    fetchMock().mockReturnValueOnce(Promise.resolve(gate.res))
+
+    render(<PlanPage />)
+
+    gate.push({ type: 'stage', stage: 'generating' })
+    gate.push({ type: 'place', place: COMPOSITE })
+
+    await waitForCards(1)
+    const status = await screen.findByRole('status')
+    expect(status.textContent).toContain('已生成 1 条')
+    expect(status.querySelector('svg')).toBeTruthy()
+  })
+})
+
 describe('结果页 · 细化', () => {
   it('细化前的说明文案用「用户选的个数」，不是继承后重算的', async () => {
     // 只选 1 个复合地点 → 细化为 2 个子点（继承后变成 2 个）
