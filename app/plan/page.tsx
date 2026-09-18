@@ -129,9 +129,9 @@ export default function PlanPage() {
           focus: focusPlace
             ? { name: focusPlace.name, address: focusPlace.address, category: focusPlace.category }
             : null,
-          previous: focusName
-            ? null
-            : places.map((p) => ({ name: p.name, tier: p.tier, category: p.category })),
+          // 单点追问也要带上完整列表：skill 需要靠它判断新增的地点是否与
+          // 已有重复，否则平台会把重复项直接 append 进列表显示给用户
+          previous: places.map((p) => ({ name: p.name, tier: p.tier, category: p.category })),
           followup: text,
         })
         if (id !== reqIdRef.current) return
