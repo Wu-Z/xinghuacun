@@ -55,14 +55,21 @@ export const amapRouteProvider: RouteProvider = {
           durationSeconds: Math.round(Number(path.duration) || 0),
           polyline: simplifyPolyline(polyline, 5),
         })
-      } catch {
-        // 单段失败降级成直线，不让整条路线失败
+      } catch (error) {
+        // 单段失败降级成直线，不让整条路线失败。
+        // 但必须留痕：之前这里静默吞错，导致线上出现「0 分钟 0.0 公里」时无从查起。
+        console.error(
+          `[route/amap] 第 ${i} 段规划失败，降级为直线 | ${from.lng},${from.lat} -> ${to.lng},${to.lat} |`,
+          error,
+        )
         legs.push({
           fromIndex,
           toIndex,
           distanceMeters: 0,
           durationSeconds: 0,
           polyline: [from, to],
+          // 明确标记，让界面能说「这段没规划出来」，而不是拿 0 冒充结果
+          degraded: true,
         })
       }
     }

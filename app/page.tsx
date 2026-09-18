@@ -19,6 +19,8 @@ import type {
 
 const GEO_TIMEOUT_MS = 5000
 const PENDING_LABEL = '已选位置'
+// 高德 QPS 限制是真实约束，等手停下来再请求，避免连点造成请求风暴
+const ROUTE_DEBOUNCE_MS = 400
 
 export default function Home() {
   const [origin, setOrigin] = useState<Origin | null>(null)
@@ -91,30 +93,38 @@ export default function Home() {
       : null
   const route = routeState && routeState.key === routeKey ? routeState.route : null
 
-  // 选中 2 个以上才规划路线；顺序即勾选顺序
+  // 选中 2 个以上才规划路线；顺序即勾选顺序。
+  //
+  // 防抖是必须的，不是优化：连点 4 张卡会触发 3 次请求，每次服务端要打 N 次高德，
+  // 1 秒内十几次调用就会撞上高德的 QPS 限制（CUQPS_HAS_EXCEEDED_THE_LIMIT）。
+  // 等手停下来再发一次，把请求风暴从源头掐掉。
   useEffect(() => {
     if (!routeKey || !origin) return
 
-    const stops = selectedOrder
-      .map((id) => pois.find((p) => p.id === id))
-      .filter((p): p is Poi => Boolean(p))
-      .map((p) => ({ id: p.id, point: p.point }))
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      const stops = selectedOrder
+        .map((id) => pois.find((p) => p.id === id))
+        .filter((p): p is Poi => Boolean(p))
+        .map((p) => ({ id: p.id, point: p.point }))
 
-    let cancelled = false
-    void fetch('/api/route/plan', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ origin: origin.point, stops, mode }),
-    })
-      .then((res) => res.json())
-      .then((data: Route & { error?: string }) => {
-        if (cancelled || data.error) return
-        setRouteState({ key: routeKey, route: data })
+      void fetch('/api/route/plan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ origin: origin.point, stops, mode }),
+        signal: controller.signal,
       })
-      .catch(() => undefined)
+        .then((res) => res.json())
+        .then((data: Route & { error?: string }) => {
+          if (controller.signal.aborted || data.error) return
+          setRouteState({ key: routeKey, route: data })
+        })
+        .catch(() => undefined)
+    }, ROUTE_DEBOUNCE_MS)
 
     return () => {
-      cancelled = true
+      clearTimeout(timer)
+      controller.abort()
     }
   }, [routeKey, origin, pois, selectedOrder, mode])
 

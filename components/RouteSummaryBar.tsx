@@ -23,6 +23,8 @@ export default function RouteSummaryBar({ selectedOrder, pois, route }: Props) {
     .map((id) => pois.find((p) => p.id === id)?.name ?? id)
     .join(' → ')
 
+  const degradedCount = route?.legs.filter((l) => l.degraded).length ?? 0
+
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-4">
       <div className="max-w-[min(100%,560px)] rounded-lg bg-paper/95 px-5 py-3 shadow-lg ring-1 ring-line backdrop-blur">
@@ -39,12 +41,22 @@ export default function RouteSummaryBar({ selectedOrder, pois, route }: Props) {
           {names}
         </div>
 
-        {route && (
+        {route && degradedCount === 0 && (
           <div className="mt-1 flex items-center gap-3 text-xs font-medium">
             <span className="tnum text-jade">{formatDuration(route.totalDurationSeconds)}</span>
             <span className="tnum text-jade">
               {(route.totalDistanceMeters / 1000).toFixed(1)} 公里
             </span>
+          </div>
+        )}
+
+        {/*
+          有路段没规划出来时，绝不拿 0 冒充结果 ——
+          之前这里显示「0 分钟 0.0 公里」，把限流失败伪装成了一条零长度路线。
+        */}
+        {route && degradedCount > 0 && (
+          <div className="mt-1 text-xs text-amber-700">
+            有 {degradedCount} 段没规划出来，图中以直线示意。稍等片刻再选一次可重试。
           </div>
         )}
       </div>

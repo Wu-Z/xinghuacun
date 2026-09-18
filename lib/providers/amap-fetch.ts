@@ -1,5 +1,14 @@
 const BASE = 'https://restapi.amap.com'
 
+/**
+ * 高德按「每秒查询数」限流，超限返回 CUQPS_HAS_EXCEEDED_THE_LIMIT。
+ * 这是瞬时错误 —— 它是按秒计的，等一会儿就好了，所以值得退避重试。
+ * 其他错误（Key 无效、参数错）重试多少次都没用，直接抛。
+ */
+const RETRYABLE_INFO = new Set(['CUQPS_HAS_EXCEEDED_THE_LIMIT'])
+const RETRY_DELAY_MS = 250
+const MAX_ATTEMPTS = 2
+
 export class AmapError extends Error {
   readonly info?: string
 
@@ -8,6 +17,10 @@ export class AmapError extends Error {
     this.name = 'AmapError'
     this.info = info
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
@@ -32,6 +45,24 @@ export async function amapGet<T>(
     if (v !== undefined && v !== '') url.searchParams.set(k, String(v))
   }
 
+  let lastError: AmapError | null = null
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await request<T>(url, path)
+    } catch (error) {
+      if (!(error instanceof AmapError) || !error.info || !RETRYABLE_INFO.has(error.info)) {
+        throw error
+      }
+      lastError = error
+      if (attempt < MAX_ATTEMPTS) await sleep(RETRY_DELAY_MS)
+    }
+  }
+
+  throw lastError ?? new AmapError(`高德接口调用失败（${path}）`)
+}
+
+async function request<T>(url: URL, path: string): Promise<T> {
   let res: Response
   try {
     res = await fetch(url, { cache: 'no-store' })

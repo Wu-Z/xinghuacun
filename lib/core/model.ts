@@ -44,6 +44,11 @@ export type RouteLeg = {
   durationSeconds: number
   distanceMeters: number
   polyline: LatLng[]
+  /**
+   * 这一段规划失败、已降级成直线。
+   * 存在的意义是让界面能说实话：没有它，失败会伪装成「0 分钟 0.0 公里」。
+   */
+  degraded?: boolean
 }
 
 export type Route = {
