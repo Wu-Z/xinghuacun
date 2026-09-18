@@ -58,6 +58,17 @@ export default function PlanPage() {
   const startedRef = useRef(false)
   /** 细化前选中的父级名字，用来给子点继承选中态 */
   const inheritFromRef = useRef<string[]>([])
+  /**
+   * 上一次流式请求的内容，供「重试」原样重跑。
+   *
+   * 不能靠「列表里有没有带 parent 的点」去反推该重试哪个任务 ——
+   * 若细化在第一个地点到达前就失败，列表是空的，那个推断会得出
+   * 「该重试 initial」，于是把用户的整份列表换掉、白花一次 LLM 调用。
+   */
+  const lastStreamRef = useRef<{ task: 'initial' | 'finalize'; extra: Record<string, unknown> }>({
+    task: 'initial',
+    extra: {},
+  })
 
   const baseBody = useCallback(
     (task: string, extra: Record<string, unknown> = {}) => {
@@ -91,6 +102,7 @@ export default function PlanPage() {
 
       const id = ++reqIdRef.current
       const before = places.length
+      lastStreamRef.current = { task, extra }
       setBusy(true)
       setStage(null)
       setError(null)
@@ -319,7 +331,6 @@ export default function PlanPage() {
   }
 
   const detail = detailName ? (places.find((p) => p.name === detailName) ?? null) : null
-  const refines = places.some((p) => p.parent)
 
   return (
     <main className="flex h-dvh overflow-hidden">
@@ -364,7 +375,10 @@ export default function PlanPage() {
               <br />
               下面是已经生成出来的部分，可能不完整。
               <button
-                onClick={() => runStreaming(refines ? 'finalize' : 'initial')}
+                onClick={() => {
+                  const last = lastStreamRef.current
+                  void runStreaming(last.task, last.extra)
+                }}
                 className="ml-1 underline underline-offset-2"
               >
                 重试

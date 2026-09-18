@@ -79,7 +79,9 @@ export default function RecommendList({
 }: Props) {
   const unverified = places.filter((p) => !p.verified).length
   const sections = buildSections(places)
-  const refined = places.some((p) => p.parent)
+  // 用显式状态而不是 `places.some(p => p.parent)`：后者是「从数据反推用户做过什么」，
+  // 一旦 skill 的细化输出漏了 parent（契约没把它列为必填），就什么说明都不显示了
+  const refined = finalizeNote !== null
 
   const renderCard = (p: RecommendPlace) => {
     const i = visitOrder.indexOf(p.name)
