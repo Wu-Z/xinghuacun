@@ -9,12 +9,14 @@ import RecommendSummary from '@/components/RecommendSummary'
 import RouteSummaryBar from '@/components/RouteSummaryBar'
 import StopDetail from '@/components/StopDetail'
 import { usePlan } from '@/lib/client/plan-session'
+import { readRecommendStream } from '@/lib/client/recommend-stream'
 import type { LatLng, RecommendPlace, Route } from '@/lib/core/model'
 
 const ROUTE_DEBOUNCE_MS = 400
 
 type RecommendMeta = { assumptions: string[]; unverified: string[] }
 type LastExchange = { answer: string; removed: { name: string; reason: string }[] }
+type Stage = 'thinking' | 'generating' | null
 
 const EMPTY_META: RecommendMeta = { assumptions: [], unverified: [] }
 // 模块级常量：写成 `?? []` 会让每次渲染都产生新引用，依赖它们的 effect 每帧都重跑
@@ -25,14 +27,14 @@ export default function PlanPage() {
   const draft = usePlan()
 
   const [busy, setBusy] = useState(false)
+  const [stage, setStage] = useState<Stage>(null)
   const [error, setError] = useState<string | null>(null)
+  /** 流中途断了：已生成的部分保留，但要说清楚它是残缺的 */
+  const [partialError, setPartialError] = useState<string | null>(null)
 
-  const [result, setResult] = useState<{
-    key: string
-    places: RecommendPlace[]
-    excluded: { name: string; reason: string }[]
-    meta: RecommendMeta
-  } | null>(null)
+  const [places, setPlaces] = useState<RecommendPlace[]>(NO_PLACES)
+  const [excluded, setExcluded] = useState<{ name: string; reason: string }[]>(NO_EXCLUDED)
+  const [meta, setMeta] = useState<RecommendMeta>(EMPTY_META)
   const [lastExchange, setLastExchange] = useState<LastExchange | null>(null)
 
   /** null = 关闭；{ name: null } = 整批追问；{ name: '某地' } = 单点追问 */
@@ -44,80 +46,125 @@ export default function PlanPage() {
 
   const reqIdRef = useRef(0)
   const startedRef = useRef(false)
+  /** 细化前选中的父级名字，用来给子点继承选中态 */
+  const inheritFromRef = useRef<string[]>([])
 
-  const current = result
-  const places = current?.places ?? NO_PLACES
-  const excluded = current?.excluded ?? NO_EXCLUDED
-  const meta = current?.meta ?? EMPTY_META
-
-  const post = useCallback(
-    async (task: 'initial' | 'refine' | 'finalize', extra: Record<string, unknown> = {}) => {
-      if (!draft) throw new Error('没有出发点')
-      const res = await fetch('/api/recommend', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          task,
-          origin: { point: draft.point },
-          destination: {
-            mode: draft.prefs.destination.trim() ? 'specified' : 'nearby',
-            requested: draft.prefs.destination.trim() || null,
-          },
-          preferences: {
-            intents: draft.prefs.intents,
-            timeBudget: draft.prefs.timeBudget,
-            travelMode: draft.prefs.travelMode,
-            companions: draft.prefs.companions,
-            crowdTolerance: draft.prefs.crowdTolerance,
-            rawRequest: draft.prefs.rawRequest,
-          },
-          ...extra,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.reason ?? '未知原因')
-      return data
+  const baseBody = useCallback(
+    (task: string, extra: Record<string, unknown> = {}) => {
+      if (!draft) return null
+      return {
+        task,
+        origin: { point: draft.point },
+        destination: {
+          mode: draft.prefs.destination.trim() ? 'specified' : 'nearby',
+          requested: draft.prefs.destination.trim() || null,
+        },
+        preferences: {
+          intents: draft.prefs.intents,
+          timeBudget: draft.prefs.timeBudget,
+          travelMode: draft.prefs.travelMode,
+          companions: draft.prefs.companions,
+          crowdTolerance: draft.prefs.crowdTolerance,
+          rawRequest: draft.prefs.rawRequest,
+        },
+        ...extra,
+      }
     },
     [draft],
   )
 
-  const runInitial = useCallback(async () => {
-    if (!draft) return
-    const id = ++reqIdRef.current
-    setBusy(true)
-    setError(null)
-    try {
-      const data = await post('initial')
-      if (id !== reqIdRef.current) return
-      setResult({
-        key: `${draft.point.lng},${draft.point.lat}`,
-        places: data.places ?? [],
-        excluded: data.excluded ?? [],
-        meta: data.meta ?? EMPTY_META,
-      })
-      setLastExchange(null)
-      setSelectedOrder([])
-      setDetailName(null)
-      setAskTarget(null)
-    } catch (e) {
-      if (id !== reqIdRef.current) return
-      setError(e instanceof Error ? e.message : '未知原因')
-    } finally {
-      if (id === reqIdRef.current) setBusy(false)
-    }
-  }, [draft, post])
+  /** 流式跑 initial / finalize：卡片随生成逐张出现，核实与生成重叠 */
+  const runStreaming = useCallback(
+    async (task: 'initial' | 'finalize', extra: Record<string, unknown> = {}) => {
+      const body = baseBody(task, extra)
+      if (!body) return
+
+      const id = ++reqIdRef.current
+      setBusy(true)
+      setStage(null)
+      setError(null)
+      setPartialError(null)
+      setPlaces(NO_PLACES)
+      setExcluded(NO_EXCLUDED)
+      setMeta(EMPTY_META)
+      if (task === 'initial') {
+        setLastExchange(null)
+        setSelectedOrder([])
+        setDetailName(null)
+        setAskTarget(null)
+      }
+
+      const acc: RecommendPlace[] = []
+      let streamError: string | null = null
+
+      try {
+        const res = await fetch('/api/recommend', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.reason ?? '未知原因')
+        }
+
+        for await (const ev of readRecommendStream(res)) {
+          if (id !== reqIdRef.current) return
+
+          if (ev.type === 'stage') {
+            setStage(ev.stage)
+          } else if (ev.type === 'place') {
+            acc.push(ev.place)
+            setPlaces([...acc])
+          } else if (ev.type === 'done') {
+            setExcluded(ev.value.excluded)
+            setMeta(ev.value.meta)
+          } else if (ev.type === 'error') {
+            streamError = ev.reason
+          }
+        }
+
+        if (streamError) setPartialError(streamError)
+
+        // 细化完成后，子点继承父级的选中状态 —— 用户的意图不该因为拆解而丢失
+        if (task === 'finalize') {
+          const from = inheritFromRef.current
+          setSelectedOrder(
+            acc
+              .filter((p) => (p.parent ? from.includes(p.parent) : from.includes(p.name)))
+              .map((p) => p.name),
+          )
+        }
+      } catch (e) {
+        if (id !== reqIdRef.current) return
+        // 已有卡片时不整批丢弃 —— 用户看到的是真实生成出来的东西
+        if (acc.length > 0) {
+          setPartialError(e instanceof Error ? e.message : '生成中断')
+        } else {
+          setError(e instanceof Error ? e.message : '未知原因')
+        }
+      } finally {
+        if (id === reqIdRef.current) {
+          setBusy(false)
+          setStage(null)
+        }
+      }
+    },
+    [baseBody],
+  )
 
   // 首页点了「帮我推荐」才跳过来，所以落地即开跑；用 ref 保证只跑一次
   useEffect(() => {
     if (!draft || startedRef.current) return
     startedRef.current = true
-    void runInitial()
-  }, [draft, runInitial])
+    void runStreaming('initial')
+  }, [draft, runStreaming])
 
-  // ── 追问：单点与整批走同一条路，都是「拿回 diff 再应用」 ──
+  // ── 追问：diff 很小，保持一次性返回 ──
   const runFollowup = useCallback(
     async (text: string) => {
-      if (!current || !askTarget || !draft) return
+      if (!draft || !askTarget) return
       const id = ++reqIdRef.current
       const focusName = askTarget.name
       setBusy(true)
@@ -125,31 +172,31 @@ export default function PlanPage() {
 
       try {
         const focusPlace = focusName ? places.find((p) => p.name === focusName) : null
-        const data = await post('refine', {
+        const body = baseBody('refine', {
           focus: focusPlace
             ? { name: focusPlace.name, address: focusPlace.address, category: focusPlace.category }
             : null,
-          // 单点追问也要带上完整列表：skill 需要靠它判断新增的地点是否与
-          // 已有重复，否则平台会把重复项直接 append 进列表显示给用户
+          // 单点追问也要带上完整列表：skill 需要靠它判断新增的是否与已有重复
           previous: places.map((p) => ({ name: p.name, tier: p.tier, category: p.category })),
           followup: text,
         })
+
+        const res = await fetch('/api/recommend', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.reason ?? '未知原因')
         if (id !== reqIdRef.current) return
 
         const removedNames = new Set((data.removed ?? []).map((r: { name: string }) => r.name))
 
-        setResult((prev) =>
-          prev
-            ? {
-                ...prev,
-                places: [
-                  // 新增的默认不选中 —— 用户没要求过它
-                  ...prev.places.filter((p) => !removedNames.has(p.name)),
-                  ...(data.added ?? []),
-                ],
-              }
-            : prev,
-        )
+        // 新增的默认不选中 —— 用户没要求过它
+        setPlaces((prev) => [
+          ...prev.filter((p) => !removedNames.has(p.name)),
+          ...(data.added ?? []),
+        ])
         // 被移除的如果正被选中，必须一并取消，否则会出现「还在选中但已不在列表里」
         setSelectedOrder((prev) => prev.filter((n) => !removedNames.has(n)))
         setLastExchange({ answer: data.answer ?? '', removed: data.removed ?? [] })
@@ -161,56 +208,25 @@ export default function PlanPage() {
         if (id === reqIdRef.current) setBusy(false)
       }
     },
-    [current, askTarget, draft, places, post],
+    [draft, askTarget, places, baseBody],
   )
 
-  // ── 细化：复合地点拆成子点，单一地点透传；子点继承父级的选择 ──
-  const runFinalize = useCallback(async () => {
-    if (!current || selectedOrder.length === 0) return
-    const id = ++reqIdRef.current
-    setBusy(true)
-    setError(null)
-
-    try {
-      const selected = selectedOrder
-        .map((name) => places.find((p) => p.name === name))
-        .filter((p): p is RecommendPlace => Boolean(p))
-        .map((p) => ({
-          name: p.name,
-          address: p.address,
-          category: p.category,
-          contains: p.contains,
-        }))
-
-      const data = await post('finalize', { selected })
-      if (id !== reqIdRef.current) return
-
-      const next: RecommendPlace[] = data.places ?? []
-
-      // 子点继承父级的选中状态：用户的意图不该因为拆解而丢失。
-      // 不属于任何已选父级的点（skill 新增的）默认不选。
-      const inherited = next
-        .filter((p) => p.parent && selectedOrder.includes(p.parent))
-        .map((p) => p.name)
-      const passedThrough = next
-        .filter((p) => !p.parent && selectedOrder.includes(p.name))
-        .map((p) => p.name)
-
-      setResult((prev) =>
-        prev
-          ? { ...prev, places: next, excluded: data.excluded ?? [], meta: data.meta ?? EMPTY_META }
-          : prev,
-      )
-      setSelectedOrder([...inherited, ...passedThrough])
-      setLastExchange(null)
-      setAskTarget(null)
-    } catch (e) {
-      if (id !== reqIdRef.current) return
-      setError(e instanceof Error ? e.message : '未知原因')
-    } finally {
-      if (id === reqIdRef.current) setBusy(false)
-    }
-  }, [current, selectedOrder, places, post])
+  const runFinalize = useCallback(() => {
+    if (selectedOrder.length === 0) return
+    inheritFromRef.current = selectedOrder
+    const selected = selectedOrder
+      .map((name) => places.find((p) => p.name === name))
+      .filter((p): p is RecommendPlace => Boolean(p))
+      .map((p) => ({
+        name: p.name,
+        address: p.address,
+        category: p.category,
+        contains: p.contains,
+      }))
+    setLastExchange(null)
+    setAskTarget(null)
+    void runStreaming('finalize', { selected })
+  }, [selectedOrder, places, runStreaming])
 
   // ── 路线：勾选的是「一组点」，拜访顺序由服务端算最优后返回 ──
   const routeKey =
@@ -274,22 +290,18 @@ export default function PlanPage() {
   }
 
   const detail = detailName ? (places.find((p) => p.name === detailName) ?? null) : null
+  const refines = places.some((p) => p.parent)
 
   return (
     <main className="flex h-dvh overflow-hidden">
       <aside className="relative flex w-[430px] shrink-0 flex-col border-r border-line bg-paper">
         <div className="shrink-0 border-b border-line px-4 py-4">
-          <div className="mb-3 flex items-baseline gap-3">
-            <Link href="/" className="text-sm font-semibold text-ink hover:text-jade">
-              周边去哪
-            </Link>
+          <Link href="/" className="text-sm font-semibold text-ink hover:text-jade">
+            周边去哪
+          </Link>
+          <div className="mt-3">
+            <RecommendSummary location={draft.label} value={draft.prefs} editHref="/" />
           </div>
-          <RecommendSummary
-            location={draft.label}
-            value={draft.prefs}
-            onEdit={() => undefined}
-            editHref="/"
-          />
         </div>
 
         {askTarget && (
@@ -302,10 +314,33 @@ export default function PlanPage() {
         )}
 
         <div className="flex-1 overflow-y-auto">
-          {busy && (
-            <p className="px-4 py-6 text-sm text-ink-soft">
-              正在处理…（要跑一次联网检索，需要几秒）
-            </p>
+          {/* 流式：给出真实阶段，而不是一句静态的「正在处理」 */}
+          {busy && places.length === 0 && (
+            <div className="flex items-center gap-2 px-4 py-6 text-sm text-ink-soft">
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-jade" />
+              {stage === 'generating' ? '正在生成地点…' : '正在检索与思考…'}
+            </div>
+          )}
+
+          {busy && places.length > 0 && (
+            <div className="flex items-center gap-2 border-b border-line bg-mist px-4 py-2 text-[11.5px] text-ink-soft">
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-jade" />
+              已生成 {places.length} 条，还在继续…
+            </div>
+          )}
+
+          {partialError && (
+            <div className="border-b border-line bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+              生成中断：{partialError}
+              <br />
+              下面是已经生成出来的部分，可能不完整。
+              <button
+                onClick={() => runStreaming(refines ? 'finalize' : 'initial')}
+                className="ml-1 underline underline-offset-2"
+              >
+                重试
+              </button>
+            </div>
           )}
 
           {!busy && error && (
@@ -313,7 +348,7 @@ export default function PlanPage() {
               <p className="font-medium text-red-700">推荐失败</p>
               <p className="mt-1 text-ink-soft">{error}</p>
               <button
-                onClick={runInitial}
+                onClick={() => runStreaming('initial')}
                 className="mt-3 rounded-md bg-mist px-3 py-1.5 text-xs text-ink hover:bg-line"
               >
                 重试
@@ -321,7 +356,7 @@ export default function PlanPage() {
             </div>
           )}
 
-          {!busy && !error && places.length > 0 && (
+          {places.length > 0 && (
             <RecommendList
               places={places}
               visitOrder={visitOrder}

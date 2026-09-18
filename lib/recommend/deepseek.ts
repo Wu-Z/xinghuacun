@@ -3,6 +3,26 @@ export type DeepseekFailure = {
   detail: string
 }
 
+export type StreamEvent =
+  /**
+   * 推理阶段开始的信号 —— **刻意不带内容**。
+   * 模型的内部独白展示给用户既难懂又容易误导，前端只需要知道
+   * 「它在思考，不是卡住了」，这样 0.7s 就能给出真实反馈。
+   */
+  | { type: 'reasoning' }
+  | { type: 'content'; text: string }
+  | { type: 'done'; finishReason: string }
+
+export class DeepseekStreamError extends Error {
+  readonly failure: DeepseekFailure
+
+  constructor(failure: DeepseekFailure) {
+    super(failure.detail)
+    this.name = 'DeepseekStreamError'
+    this.failure = failure
+  }
+}
+
 export type DeepseekResult = { ok: true; text: string } | { ok: false; failure: DeepseekFailure }
 
 type Options = {
@@ -106,4 +126,108 @@ export async function callDeepseekJson(opts: Options): Promise<DeepseekResult> {
   }
 
   return { ok: true, text }
+}
+
+/**
+ * 流式版。逐块吐出 `content` 增量，由调用方边收边解析。
+ *
+ * 注意 delta 里还有一个 `reasoning_content` 字段 —— 这个模型是推理模型，
+ * 会先在那边输出很长一段内部推理，**期间 content 一直是 null**。
+ * 实测推理占约 40% 的时间、写 JSON 占 60%，所以真正的收益在后面那段：
+ * 每个地点一写完就能立刻拿去高德核实，不必等整份 JSON 结束。
+ *
+ * 推理内容本身不吐给调用方 —— 那是模型的内部独白，展示给用户既难懂又容易误导。
+ */
+export async function* streamDeepseekJson(opts: Options): AsyncGenerator<StreamEvent> {
+  const doFetch = opts.fetchImpl ?? fetch
+
+  let res: Response
+  try {
+    res = await doFetch(`${opts.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${opts.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: opts.model,
+        messages: [
+          { role: 'system', content: opts.system },
+          { role: 'user', content: opts.user },
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+        stream: true,
+      }),
+      cache: 'no-store',
+    })
+  } catch {
+    // 故意丢弃原始 error：它可能带着含 apiKey 的请求信息
+    throw new DeepseekStreamError({ kind: 'unavailable', detail: '无法连接 DeepSeek' })
+  }
+
+  if (!res.ok || !res.body) {
+    throw new DeepseekStreamError({
+      kind: 'unavailable',
+      detail: `DeepSeek 返回 HTTP ${res.status}`,
+    })
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finishReason = 'stop'
+  let sawContent = false
+  let sawReasoning = false
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue
+        const payload = line.slice(5).trim()
+        if (!payload || payload === '[DONE]') continue
+
+        let parsed: {
+          choices?: {
+            delta?: { content?: string | null; reasoning_content?: string | null }
+            finish_reason?: string | null
+          }[]
+        }
+        try {
+          parsed = JSON.parse(payload)
+        } catch {
+          continue // 半截的 SSE 行，下一轮会补全
+        }
+
+        const choice = parsed.choices?.[0]
+        if (choice?.finish_reason) finishReason = choice.finish_reason
+
+        if (choice?.delta?.reasoning_content && !sawReasoning) {
+          sawReasoning = true
+          yield { type: 'reasoning' }
+        }
+
+        const text = choice?.delta?.content
+        if (text) {
+          sawContent = true
+          yield { type: 'content', text }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  if (!sawContent) {
+    throw new DeepseekStreamError({ kind: 'empty', detail: 'DeepSeek 返回了空内容' })
+  }
+
+  yield { type: 'done', finishReason }
 }

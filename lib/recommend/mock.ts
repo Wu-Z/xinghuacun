@@ -216,3 +216,26 @@ export async function mockSkillOutput(req: RecommendRequest): Promise<unknown> {
   if (req.task === 'finalize') return finalize(req)
   return INITIAL
 }
+
+/**
+ * 流式版的假 skill：把同一份 JSON 切成小块逐段吐出来，
+ * 并模拟推理阶段。这样不接真实 Key 也能验证流式链路与增量渲染。
+ */
+export async function* mockSkillStream(
+  req: RecommendRequest,
+): AsyncGenerator<{ type: 'reasoning' } | { type: 'content'; text: string } | { type: 'done' }> {
+  await new Promise((r) => setTimeout(r, 400))
+  yield { type: 'reasoning' }
+  await new Promise((r) => setTimeout(r, 700))
+
+  const json = JSON.stringify(req.task === 'finalize' ? finalize(req) : INITIAL)
+
+  // 按 60 字切块：足以跨越对象边界，能真实验证增量提取
+  const CHUNK = 60
+  for (let i = 0; i < json.length; i += CHUNK) {
+    yield { type: 'content', text: json.slice(i, i + CHUNK) }
+    await new Promise((r) => setTimeout(r, 40))
+  }
+
+  yield { type: 'done' }
+}

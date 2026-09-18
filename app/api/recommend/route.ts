@@ -1,5 +1,6 @@
 import type { RecommendRequest } from '@/lib/core/model'
-import { recommend } from '@/lib/recommend'
+import { prepareRecommend, recommend } from '@/lib/recommend'
+import { streamRecommend, type RecommendStreamEvent } from '@/lib/recommend/stream'
 
 // 推荐要跑一次 LLM 调用加联网检索，比普通接口慢得多
 export const maxDuration = 120
@@ -25,24 +26,62 @@ export async function POST(req: Request) {
     return Response.json({ error: '推荐失败', reason: '没有选中的地点' }, { status: 400 })
   }
 
-  try {
-    const out = await recommend(body)
-    if (!out.ok) {
-      // 这些 reason 是我们自己写的（「未配置 DEEPSEEK_MODEL…」这类），
-      // 安全且可操作，直接回给用户 —— 失败必须说清原因，不能只给个错误码
-      return Response.json({ error: '推荐失败', reason: out.failure.reason }, { status: 502 })
+  // refine 是 diff、通常只有一两条，流式没有收益，保持一次性返回
+  if (body.task === 'refine') {
+    try {
+      const out = await recommend(body)
+      if (!out.ok) {
+        // 这些 reason 是我们自己写的，安全且可操作，直接回给用户
+        return Response.json({ error: '推荐失败', reason: out.failure.reason }, { status: 502 })
+      }
+      if ('refine' in out) return Response.json({ kind: 'refine', ...out.refine })
+      return Response.json({ kind: 'result', ...out.value })
+    } catch (error) {
+      console.error('[api/recommend] 未预期错误', error)
+      return Response.json(
+        { error: '推荐失败', reason: '服务内部错误，详情见服务端日志' },
+        { status: 502 },
+      )
     }
-    // refine 返回 diff，其余返回完整结果
-    if ('refine' in out) return Response.json({ kind: 'refine', ...out.refine })
-    return Response.json({ kind: 'result', ...out.value })
-  } catch (error) {
-    // 不静默吞错：上一轮 QPS 事故里，正因为 catch 吞掉错误，
-    // 一个限流失败被伪装成了「0 分钟 0.0 公里」的路线。
-    // 但未预期的异常信息可能含内部路径等细节，只留日志，不回显给客户端。
-    console.error('[api/recommend] 未预期错误', error)
-    return Response.json(
-      { error: '推荐失败', reason: '服务内部错误，详情见服务端日志' },
-      { status: 502 },
-    )
   }
+
+  // initial / finalize 走流式：边生成边核实边推，第一张卡能早十几秒出现
+  const prepared = await prepareRecommend(body)
+  if (!prepared.ok) {
+    return Response.json({ error: '推荐失败', reason: prepared.failure.reason }, { status: 502 })
+  }
+
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: RecommendStreamEvent) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
+      }
+      try {
+        for await (const event of streamRecommend({
+          req: body,
+          place: prepared.place,
+          userMessage: prepared.userMessage,
+        })) {
+          send(event)
+        }
+      } catch (error) {
+        // 不静默吞错：上一轮 QPS 事故里，正因为 catch 吞掉错误，
+        // 一个限流失败被伪装成了「0 分钟 0.0 公里」的路线
+        console.error('[api/recommend] 流式未预期错误', error)
+        send({ type: 'error', reason: '服务内部错误，详情见服务端日志' })
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'content-type': 'application/x-ndjson; charset=utf-8',
+      'cache-control': 'no-store',
+      // 关掉缓冲，否则前面的时间省下来又被中间层攒回去了
+      'x-accel-buffering': 'no',
+    },
+  })
 }

@@ -123,6 +123,34 @@ async function getSkillOutput(
   }
 }
 
+/**
+ * 流式路径的前置：逆地理编码拿到「位置名 + 城市」，并组装给 skill 的输入文本。
+ * 单独抽出来是因为流式与非流式两条路都要用它。
+ */
+export async function prepareRecommend(
+  req: RecommendRequest,
+): Promise<
+  | { ok: true; place: { label: string; city: string }; userMessage: string }
+  | { ok: false; failure: RecommendFailure }
+> {
+  const verify = getVerifyProvider()
+  let place = { label: '', city: '' }
+
+  if (req.origin.point) {
+    try {
+      place = await verify.reverseGeocode(req.origin.point)
+    } catch (error) {
+      console.error('[recommend] 逆地理编码失败，退化为纯坐标', error)
+    }
+  }
+  // mock 不需要城市（地址里已经带了），所以只在真实 skill 路径上拦住
+  if (!isMock() && !place.label && !place.city) {
+    return { ok: false, failure: { reason: '无法确定出发点所在城市，请换一个位置试试' } }
+  }
+
+  return { ok: true, place, userMessage: buildUserMessage(req, place) }
+}
+
 export async function recommend(req: RecommendRequest): Promise<RecommendOutcome> {
   const verify = getVerifyProvider()
 
