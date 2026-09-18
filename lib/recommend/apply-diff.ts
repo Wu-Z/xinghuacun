@@ -13,6 +13,13 @@ export type ApplyResult = {
   removedSubPoints: string[]
   /** 同名命中、原地替换的顶层地点 */
   updated: string[]
+  /**
+   * 真正追加到末尾的顶层地点名（同名 upsert 的归 `updated`，不算新增）。
+   *
+   * 调用方靠这个区分「新来的」与「本来就在的」：只有新来的才需要记下它
+   * 是从哪次追问来的（锚点），本来就在的位置没变，不该被重新归属。
+   */
+  added: string[]
 }
 
 /**
@@ -70,6 +77,7 @@ export function applyDiff(places: RecommendPlace[], diff: RefineDiff): ApplyResu
   const index = new Map(cleaned.map((p, i) => [p.name, i]))
   const out = cleaned.slice()
   const updated: string[] = []
+  const added: string[] = []
 
   for (const item of diff.added) {
     const at = index.get(item.name)
@@ -79,8 +87,9 @@ export function applyDiff(places: RecommendPlace[], diff: RefineDiff): ApplyResu
     } else {
       index.set(item.name, out.length)
       out.push(item)
+      added.push(item.name)
     }
   }
 
-  return { places: out, removedTopLevel, removedSubPoints, updated }
+  return { places: out, added, removedTopLevel, removedSubPoints, updated }
 }

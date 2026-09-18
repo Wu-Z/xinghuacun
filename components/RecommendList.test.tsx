@@ -92,6 +92,32 @@ describe('RecommendList · 分组', () => {
     expect(screen.getByText(/↓\s*2\s*个站点/)).toBeTruthy()
   })
 
+  it('单点追问新增的项，挂在锚点那条下面', () => {
+    renderList({
+      places: [place('集美大社'), place('园博园'), place('味友鸭肉面线', { askedFrom: '园博园' })],
+    })
+    expect(screen.getByText('「园博园」的追问新增')).toBeTruthy()
+  })
+
+  it('锚点已不在列表里时，这些项退回平铺，不悬挂', () => {
+    // 后续追问可能把锚点删掉；挂在一个不存在的父级下会让人以为列表坏了
+    renderList({
+      places: [place('集美大社'), place('味友鸭肉面线', { askedFrom: '园博园' })],
+    })
+    expect(screen.queryByText(/追问新增/)).toBeNull()
+  })
+
+  it('选中锚点不会连带选中它下面的新增项', () => {
+    // 与细化的 parent 不同：那个是「拆开」，子点继承父级选中是合理的；
+    // 这里只是「在它附近找的」，两者是各自独立的行程项
+    renderList({
+      places: [place('园博园'), place('味友鸭肉面线', { askedFrom: '园博园' })],
+      visitOrder: ['园博园'],
+    })
+    expect(screen.getByRole('button', { name: '取消选择 园博园' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '选择 味友鸭肉面线' })).toBeTruthy()
+  })
+
   it('未核实的地点标注出来，且不占路线编号', () => {
     renderList({
       places: [

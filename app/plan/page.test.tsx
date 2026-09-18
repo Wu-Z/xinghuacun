@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RecommendPlace } from '@/lib/core/model'
 
@@ -295,6 +295,56 @@ describe('结果页 · 中途失败与重试', () => {
     await waitFor(() => expect(recommendCalls).toHaveLength(3), { timeout: 3000 })
     // 第三次调用必须是 finalize —— 这正是那个 bug 会答错的地方
     expect(recommendCalls[2].task).toBe('finalize')
+  })
+})
+
+describe('结果页 · 追问新增项的归属', () => {
+  /** refine 不走流，返回的是一份普通 JSON */
+  function refineJson(added: RecommendPlace[]): Response {
+    return new Response(JSON.stringify({ answer: '补了两个地方', added, removed: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  async function askOne(index: number, text: string) {
+    const asks = await screen.findAllByRole('button', { name: '追问' })
+    asks[index].click()
+    const input = await screen.findByPlaceholderText(/我想在这吃点东西/)
+    fireEvent.change(input, { target: { value: text } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+  }
+
+  it('单点追问新增的项，挂在那条地点下面', async () => {
+    nextResponses = [
+      streamOf([COMPOSITE, PLAIN]),
+      refineJson([place('味友鸭肉面线')]),
+    ]
+    render(<PlanPage />)
+    await waitForCards(2)
+
+    // 第 2 张卡是「海堤路」，对它单独追问
+    await askOne(1, '在附近找点好吃的')
+
+    await waitFor(() => expect(screen.getByText('「海堤路」的追问新增')).toBeTruthy(), {
+      timeout: 3000,
+    })
+  })
+
+  it('整批追问没有锚点，新增项平铺，不挂在任何地点下', async () => {
+    // 「对这批不满意？」是对整批说的，没有「在这附近」的空间约束，
+    // 硬挂到某一条下面会凭空虚指一个它并不来自的地方
+    nextResponses = [streamOf([COMPOSITE, PLAIN]), refineJson([place('味友鸭肉面线')])]
+    render(<PlanPage />)
+    await waitForCards(2)
+
+    fireEvent.click(await screen.findByRole('button', { name: '对这批不满意？' }))
+    const input = await screen.findByPlaceholderText(/我想增加点中间可以观光的地方/)
+    fireEvent.change(input, { target: { value: '换几个不那么挤的' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => expect(screen.getByText('味友鸭肉面线')).toBeTruthy(), { timeout: 3000 })
+    expect(screen.queryByText(/的追问新增/)).toBeNull()
   })
 })
 

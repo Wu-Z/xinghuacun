@@ -23,6 +23,17 @@ describe('applyDiff', () => {
     expect(out.places.map((p) => p.name)).toEqual(['A', 'B', 'C'])
   })
 
+  it('added 只报「真正追加」的名字，同名 upsert 归 updated', () => {
+    // 调用方靠这个区分「新增项」与「更新项」：只有新增项才需要记下它
+    // 是从哪次追问来的（锚点），更新项位置没变，不该被重新归属
+    const out = applyDiff([place('A'), place('B')], {
+      added: [place('B', { tier: '更新过' }), place('C')],
+      removed: [],
+    })
+    expect(out.added).toEqual(['C'])
+    expect(out.updated).toEqual(['B'])
+  })
+
   it('移除顶层地点', () => {
     const out = applyDiff([place('A'), place('B')], { added: [], removed: [{ name: 'B', reason: 'x' }] })
     expect(out.places.map((p) => p.name)).toEqual(['A'])

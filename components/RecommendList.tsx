@@ -35,15 +35,44 @@ function Fold({ title, children }: { title: string; children: React.ReactNode })
 
 type Section =
   | { kind: 'group'; parent: string; items: RecommendPlace[] }
+  | { kind: 'anchored'; item: RecommendPlace; asked: RecommendPlace[] }
   | { kind: 'single'; item: RecommendPlace }
 
-/** 细化后按 parent 分组；没有 parent 的按原顺序独立列出 */
+/**
+ * 两种分组，语义完全不同，别混：
+ *
+ * - **`parent`**（细化）：一个复合地点被**拆开**成若干站点。子点继承父级选中是合理的，
+ *   它们本来就是同一个地方。组头写「↓ N 个站点」。
+ * - **`askedFrom`**（追问）：一条推荐是「在某个地点旁边」被找出来的。这只是**来源归属**，
+ *   两者是各自独立的行程项，**不级联选中**。组头写「的追问新增」。
+ */
 function buildSections(places: RecommendPlace[]): Section[] {
+  const byName = new Map(places.map((p) => [p.name, p]))
+
+  // 锚点必须确实在列表里、且它自己不是被追问带上来的，
+  // 否则会形成「挂在一条本身也悬挂着的项下面」的链
+  const childrenOf = new Map<string, RecommendPlace[]>()
+  const consumed = new Set<string>()
+  for (const p of places) {
+    const anchor = p.askedFrom
+    if (!anchor || p.parent) continue
+
+    const target = byName.get(anchor)
+    if (!target || target.askedFrom || target.parent) continue
+
+    childrenOf.set(anchor, [...(childrenOf.get(anchor) ?? []), p])
+    consumed.add(p.name)
+  }
+
   const out: Section[] = []
 
   for (const p of places) {
+    // 已经被挂到锚点下面的，不再单独出现在顶层
+    if (consumed.has(p.name)) continue
+
     if (!p.parent) {
-      out.push({ kind: 'single', item: p })
+      const asked = childrenOf.get(p.name)
+      out.push(asked ? { kind: 'anchored', item: p, asked } : { kind: 'single', item: p })
       continue
     }
 
@@ -143,6 +172,21 @@ export default function RecommendList({
         {sections.map((s) =>
           s.kind === 'single' ? (
             renderCard(s.item)
+          ) : s.kind === 'anchored' ? (
+            <div key={s.item.name} className="anim-fade">
+              {renderCard(s.item)}
+              {/* 缩进 + 左侧竖线表示「归属」，不是「包含」——
+                  措辞用「的追问新增」而不是「附近」，后者会替 skill
+                  担保一件它没说过的事：实测有新增项自己承认要接驳一站 */}
+              <div className="border-t border-line bg-mist/40 pl-4">
+                <div className="py-1.5 text-[11.5px] text-ink-soft">
+                  「{s.item.name}」的追问新增
+                </div>
+                <div className="divide-y divide-line border-l-2 border-jade/25">
+                  {s.asked.map(renderCard)}
+                </div>
+              </div>
+            </div>
           ) : (
             <div key={s.parent}>
               <div className="bg-mist/70 px-4 py-1.5 text-[11.5px] font-medium text-ink-soft">

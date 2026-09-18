@@ -255,7 +255,16 @@ export default function PlanPage() {
           added: data.added ?? [],
           removed: data.removed ?? [],
         })
-        setPlaces(applied.places)
+        // 单点追问新增的项，记下它是在哪个地点旁边找到的 —— 列表靠它把这几条
+        // 挂在那条下面。只认「真正新追加」的：同名 upsert 的本来就在列表里，
+        // 位置没变，重新归属会把它从原处挪走。整批追问没有锚点，保持平铺。
+        setPlaces(
+          focusName
+            ? applied.places.map((p) =>
+                applied.added.includes(p.name) ? { ...p, askedFrom: focusName } : p,
+              )
+            : applied.places,
+        )
 
         // 被移除的如果正被选中，必须一并取消，否则会出现「还在选中但已不在列表里」
         const gone = new Set([...applied.removedTopLevel, ...applied.removedSubPoints])

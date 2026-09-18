@@ -63,6 +63,14 @@ export type RecommendPlace = {
   contains?: string[]
   /** 细化后：属于哪个复合地点。null 表示本身就是单一地点，原样透传 */
   parent?: string | null
+  /**
+   * 这条是「在某个地点的追问里」新增的，值是那个地点的名字。
+   *
+   * 与 `parent` 不是一回事：`parent` 是空间的「拆开」，子点继承父级选中；
+   * 这个只是**来源归属**，列表把它挂在那条下面，但两者各自独立勾选。
+   * 纯平台侧字段 —— skill 不产出它，高德核实也不碰它。
+   */
+  askedFrom?: string
   fit: { tag: string; why: string }[]
   crowdLevel?: string
   crowdNote?: string
