@@ -10,6 +10,7 @@ import RouteSummaryBar from '@/components/RouteSummaryBar'
 import StopDetail from '@/components/StopDetail'
 import { usePlan } from '@/lib/client/plan-session'
 import { readRecommendStream } from '@/lib/client/recommend-stream'
+import { applyDiff } from '@/lib/recommend/apply-diff'
 import type { LatLng, RecommendPlace, Route } from '@/lib/core/model'
 
 const ROUTE_DEBOUNCE_MS = 400
@@ -190,15 +191,17 @@ export default function PlanPage() {
         if (!res.ok) throw new Error(data.reason ?? '未知原因')
         if (id !== reqIdRef.current) return
 
-        const removedNames = new Set((data.removed ?? []).map((r: { name: string }) => r.name))
+        // diff 的应用不再是「filter + 拼接」：要支持同名 upsert（复合地点
+        // 更新 contains）与子点层匹配，见 apply-diff.ts
+        const applied = applyDiff(places, {
+          added: data.added ?? [],
+          removed: data.removed ?? [],
+        })
+        setPlaces(applied.places)
 
-        // 新增的默认不选中 —— 用户没要求过它
-        setPlaces((prev) => [
-          ...prev.filter((p) => !removedNames.has(p.name)),
-          ...(data.added ?? []),
-        ])
         // 被移除的如果正被选中，必须一并取消，否则会出现「还在选中但已不在列表里」
-        setSelectedOrder((prev) => prev.filter((n) => !removedNames.has(n)))
+        const gone = new Set([...applied.removedTopLevel, ...applied.removedSubPoints])
+        setSelectedOrder((prev) => prev.filter((n) => !gone.has(n)))
         setLastExchange({ answer: data.answer ?? '', removed: data.removed ?? [] })
         setAskTarget(null)
       } catch (e) {
