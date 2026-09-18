@@ -12,6 +12,7 @@ import { usePlan } from '@/lib/client/plan-session'
 import { readRecommendStream } from '@/lib/client/recommend-stream'
 import { pickRouteMode } from '@/lib/core/route-mode'
 import { applyDiff } from '@/lib/recommend/apply-diff'
+import { canFinalize } from '@/lib/recommend/can-finalize'
 import { inheritSelection } from '@/lib/recommend/inherit-selection'
 import type { LatLng, RecommendPlace, Route } from '@/lib/core/model'
 
@@ -39,6 +40,12 @@ export default function PlanPage() {
   const [excluded, setExcluded] = useState<{ name: string; reason: string }[]>(NO_EXCLUDED)
   const [meta, setMeta] = useState<RecommendMeta>(EMPTY_META)
   const [lastExchange, setLastExchange] = useState<LastExchange | null>(null)
+  /** 刚细化完的账，用来向用户交代「未选的已移除」 */
+  const [finalizeNote, setFinalizeNote] = useState<{
+    before: number
+    selected: number
+    after: number
+  } | null>(null)
 
   /** null = 关闭；{ name: null } = 整批追问；{ name: '某地' } = 单点追问 */
   const [askTarget, setAskTarget] = useState<{ name: string | null } | null>(null)
@@ -83,10 +90,12 @@ export default function PlanPage() {
       if (!body) return
 
       const id = ++reqIdRef.current
+      const before = places.length
       setBusy(true)
       setStage(null)
       setError(null)
       setPartialError(null)
+      setFinalizeNote(null)
       setPlaces(NO_PLACES)
       setExcluded(NO_EXCLUDED)
       setMeta(EMPTY_META)
@@ -133,6 +142,13 @@ export default function PlanPage() {
         // 细化完成后，子点继承父级的选中状态 —— 用户的意图不该因为拆解而丢失
         if (task === 'finalize') {
           setSelectedOrder(inheritSelection(acc, inheritFromRef.current))
+          // selected 取细化前的选择数：inheritFromRef 是细化前的快照，
+          // 而 selectedOrder 此时已经被继承重算过了
+          setFinalizeNote({
+            before,
+            selected: inheritFromRef.current.length,
+            after: acc.length,
+          })
         }
       } catch (e) {
         if (id !== reqIdRef.current) return
@@ -149,7 +165,8 @@ export default function PlanPage() {
         }
       }
     },
-    [baseBody],
+    // places 只为取细化前的条数，用于向用户交代「未选的已移除」
+    [baseBody, places],
   )
 
   // 首页点了「帮我推荐」才跳过来，所以落地即开跑；用 ref 保证只跑一次
@@ -377,6 +394,8 @@ export default function PlanPage() {
               lastExchange={lastExchange}
               selectedCount={selectedOrder.length}
               busy={busy}
+              canFinalize={canFinalize(places, selectedOrder)}
+              finalizeNote={finalizeNote}
               onToggle={togglePlace}
               onOpenDetail={setDetailName}
               onAsk={(name) => setAskTarget({ name })}

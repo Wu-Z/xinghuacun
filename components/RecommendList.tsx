@@ -12,6 +12,14 @@ type Props = {
   lastExchange: { answer: string; removed: { name: string; reason: string }[] } | null
   selectedCount: number
   busy: boolean
+  /** 选中的里面还有没有可拆的复合地点 —— 没有就不该给细化按钮 */
+  canFinalize: boolean
+  /**
+   * 刚细化完的账：列表原有几条、用户当初选了几个、细化出几个站点。
+   * `selected` 必须是**细化前**的数量 —— 细化后 selectedOrder 会被继承重算，
+   * 拿它当「用户选了几个」会得出「选了 4 个」这种与事实不符的说法。
+   */
+  finalizeNote: { before: number; selected: number; after: number } | null
   onToggle: (name: string) => void
   onOpenDetail: (name: string) => void
   onAsk: (name: string | null) => void
@@ -62,6 +70,8 @@ export default function RecommendList({
   lastExchange,
   selectedCount,
   busy,
+  canFinalize,
+  finalizeNote,
   onToggle,
   onOpenDetail,
   onAsk,
@@ -69,7 +79,7 @@ export default function RecommendList({
 }: Props) {
   const unverified = places.filter((p) => !p.verified).length
   const sections = buildSections(places)
-  const refines = places.some((p) => p.parent)
+  const refined = places.some((p) => p.parent)
 
   const renderCard = (p: RecommendPlace) => {
     const i = visitOrder.indexOf(p.name)
@@ -92,7 +102,7 @@ export default function RecommendList({
           {places.length} 条推荐
           {unverified > 0 && ` · ${unverified} 条未能核实`}
         </span>
-        {!refines && (
+        {!refined && (
           <button
             onClick={() => onAsk(null)}
             disabled={busy}
@@ -119,10 +129,17 @@ export default function RecommendList({
         </div>
       )}
 
-      {/* 细化完成后的说明 */}
-      {refines && (
+      {/* 细化完成后的说明。必须交代「未选的已移除」——
+          否则用户会发现列表从 3 条变 1 条，以为东西丢了 */}
+      {refined && finalizeNote && (
         <div className="border-b border-line bg-mist px-4 py-2.5 text-[11.5px] leading-relaxed text-ink-soft">
-          已按站点粒度拆开。子点默认继承你原来的选择，<span className="text-ink">请再过一遍</span>
+          已把选中的 {finalizeNote.selected} 个细化为 {finalizeNote.after} 个站点
+          {finalizeNote.before > finalizeNote.selected && (
+            <>
+              ；列表里其余 {finalizeNote.before - finalizeNote.selected} 个未选的地点已移除
+            </>
+          )}
+          。子点默认继承你原来的选择，<span className="text-ink">请再过一遍</span>
           ，取消掉不想去的；新增的点需要你主动勾选。
         </div>
       )}
@@ -142,8 +159,9 @@ export default function RecommendList({
         )}
       </div>
 
-      {/* 选好之后就细化 —— 这是路径规划的前置步骤 */}
-      {!refines && selectedCount > 0 && (
+      {/* 选好之后就细化 —— 这是路径规划的前置步骤。
+          只在选中的里面还有可拆的复合地点时才给按钮，否则点下去毫无反应 */}
+      {canFinalize && selectedCount > 0 && (
         <div className="border-t border-line bg-paper px-4 py-3">
           <button
             onClick={onFinalize}
