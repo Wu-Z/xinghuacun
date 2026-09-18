@@ -1,3 +1,4 @@
+import { asText } from './coerce'
 import type { OpenStatus } from './model'
 
 const RANGE = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/
@@ -8,12 +9,11 @@ function toMinutes(h: number, m: number): number {
 
 /**
  * 从高德的 open_time / opentime2 推断当前营业状态。
+ * 入参是 unknown：上游可能给字符串、数组，或表示「没有值」的空数组。
  * 判不出来一律 'unknown' —— 绝不把「不知道」当成「已打烊」，那样会误杀 POI。
  */
-export function parseOpenStatus(openTime: string | undefined, now: Date): OpenStatus {
-  if (!openTime) return 'unknown'
-
-  const text = openTime.trim()
+export function parseOpenStatus(openTime: unknown, now: Date): OpenStatus {
+  const text = asText(openTime).trim()
   if (!text) return 'unknown'
   if (/24\s*小时/.test(text)) return 'open'
 

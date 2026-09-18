@@ -39,4 +39,19 @@ describe('parseOpenStatus', () => {
     expect(parseOpenStatus('09:00-12:00;14:00-18:00', at(15))).toBe('open')
     expect(parseOpenStatus('09:00-12:00;14:00-18:00', at(13))).toBe('closed')
   })
+
+  // 以下三条来自真实高德返回：这些字段不保证是字符串
+  it('营业时间是数组时取第一个', () => {
+    expect(parseOpenStatus(['09:00-17:00'], at(10))).toBe('open')
+  })
+
+  it('营业时间是空数组（高德用 [] 表示没值）时给 unknown', () => {
+    expect(parseOpenStatus([], at(10))).toBe('unknown')
+  })
+
+  it('营业时间不是字符串时不抛错，给 unknown', () => {
+    expect(parseOpenStatus(123, at(10))).toBe('unknown')
+    expect(parseOpenStatus({}, at(10))).toBe('unknown')
+    expect(parseOpenStatus([[]], at(10))).toBe('unknown')
+  })
 })

@@ -66,6 +66,33 @@ describe('mapAmapPoi', () => {
     const p = mapAmapPoi({ ...RAW, name: '' }, ORIGIN, 'f', NOW)
     expect(p.name.length).toBeGreaterThan(0)
   })
+
+  // 以下两条来自真实高德返回：它用 [] 表示空字段，不保证是字符串
+  it('高德用空数组表示空字段时不炸，全部回落到兜底值', () => {
+    const p = mapAmapPoi(
+      { id: [], name: [], type: [], location: [], distance: [], address: [] },
+      ORIGIN,
+      'fallback',
+      NOW,
+    )
+    expect(p.id).toBe('fallback')
+    expect(p.name).toBe('未命名地点')
+    expect(p.category).toBe('其他')
+    expect(p.distanceMeters).toBe(0)
+    expect(p.address).toBe('')
+    expect(p.openStatus).toBe('unknown')
+  })
+
+  it('biz_ext 里的 rating 与 open_time 是数组时也能解析', () => {
+    const p = mapAmapPoi(
+      { ...RAW, biz_ext: { rating: ['4.5'], open_time: ['09:00-17:00'] } },
+      ORIGIN,
+      'f',
+      NOW,
+    )
+    expect(p.rating).toBe(4.5)
+    expect(p.openStatus).toBe('open')
+  })
 })
 
 describe('parseAmapPolyline', () => {
