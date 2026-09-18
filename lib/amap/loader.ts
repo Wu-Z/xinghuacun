@@ -14,8 +14,11 @@ export function loadAmap(): Promise<any> {
   if (window.AMap) return Promise.resolve(window.AMap)
   if (loading) return loading
 
+  // serviceHost 的一级路由必须是 _AMapService —— 这不是约定，是 JS API 运行时强校验的。
+  // 但 App Router 会把 `_` 开头的目录当 private folder 排除掉，直接建目录拿不到路由，
+  // 所以真正的路由挂在 /api/amap-service，由 next.config.ts 的 rewrite 映射过来。
   window._AMapSecurityConfig = {
-    serviceHost: `${window.location.origin}/api/amap-service`,
+    serviceHost: `${window.location.origin}/_AMapService`,
   }
 
   const key = process.env.NEXT_PUBLIC_AMAP_JS_KEY
