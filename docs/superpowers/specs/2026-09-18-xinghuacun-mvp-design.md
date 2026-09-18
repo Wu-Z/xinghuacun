@@ -56,9 +56,11 @@ Route Handlers 负责代理上游、归一化字段；客户端只认内部领�
 - 安全密钥通过 `serviceHost` 指向本站代理路由 `/api/amap-service/[...path]`，
   由服务端追加 `jscode` 参数。前端只拿到 `serviceHost` 这个路径，拿不到密钥本身。
 
-  > 路径**不能**叫 `_AMapService`：App Router 会把下划线开头的目录当成 private folder，
-  > 直接排除在路由之外，那样这个代理根本不会生成。`_AMapService` 只是高德 Nginx 示例里
-  > 的约定，SDK 并不校验它，`serviceHost` 就是一个我们自己定的基地址。
+  > **实测修正**：`_AMapService` 不是可以随便改的约定，JS API 会在运行时强校验它，
+  > 路径不对会直接弹「使用 JSAPI 安全模式，代理服务请以 _AMapService 作为一级路由」。
+  > 但 App Router 会把下划线开头的目录当 private folder 排除，直接建目录拿不到路由。
+  > 解法是真实路由挂在 `/api/amap-service`，用 `next.config.ts` 的 `rewrites` 把
+  > `/_AMapService/:path*` 映射过去 —— rewrite 发生在文件系统路由之前，不受该规则影响。
 - `.env.local` 进 `.gitignore`；仓库内只提交 `.env.example`，只写变量名不写值。
 
 ### 3.4 已知近似：「游玩项目」是规则推导的
@@ -68,6 +70,31 @@ Route Handlers 负责代理上游、归一化字段；客户端只认内部领�
 
 这是本版唯一一处主动接受的近似。规则表是纯数据，后续换 LLM 或真实内容源时只替换
 `derive.ts` 的实现，UI 与 API 契约不动。用户已确认此项，后续另行想办法优化。
+
+### 3.5 高德接入的两条硬约束（实测得到，非推测）
+
+这两条都是**用真实高德数据跑过之后才暴露**的，mock 数据下完全看不出来，因此记在这里
+防止后续被「优化」掉：
+
+1. **`serviceHost` 的一级路由必须是 `_AMapService`**，SDK 运行时强校验。与 App Router
+   的 private folder 规则冲突，用 `rewrites` 化解（详见 3.3）。
+2. **高德返回的字段不保证是字符串**：空字段返回 `[]`，有的字段返回数组或数字。
+   实测 `biz_ext.open_time` 回来是数组，直接 `.trim()` 会让整个周边搜索 502。
+   所有权宜之计都收敛在 `lib/core/coerce.ts` 的 `asText()` 里，调用点一律不直接
+   做字符串操作。新增读取高德字段的代码必须走 `asText`。
+
+### 3.6 已知的召回质量问题（本版未解决）
+
+用真实数据跑周边搜索时会看到结果里混进「行李寄存点」「宾馆」「商务住宅」这类
+**不是游玩去处**的 POI。原因是 `place/around` 返回全量 POI 类型，而本版没有做
+类型过滤。
+
+mock 数据下看不出来，因为它只产出预设的六类。这是下一版应当优先解决的问题：
+在 `amapPoiProvider.searchNearby` 里给请求加 `types` 白名单（高德 POI 分类编码），
+把召回限制在风景名胜 / 餐饮 / 购物 / 科教文化 / 体育休闲等「可游玩」大类。
+
+之所以本版不动：分类白名单是产品口径问题，编码选错会导致召回直接为空，
+应当由产品决策而不是实现者顺手猜。
 
 ## 4. 目录结构
 
@@ -201,8 +228,8 @@ PoiDetail
 ### ANY /api/amap-service/[...path]
 
 转发到 `https://restapi.amap.com/<path>`，追加 `jscode` 后返回。仅服务端持有安全密钥。
-浏览器端只把 `serviceHost` 设成 `${location.origin}/api/amap-service`，用页面自身
-origin 拼绝对地址，因此本地和线上都不需要额外配置。
+浏览器端把 `serviceHost` 设成 `${location.origin}/_AMapService`（一级路由必须是这个名字），
+由 rewrite 转到本路由。用页面自身 origin 拼绝对地址，因此本地和线上都不需要额外配置。
 
 ## 7. 排序规则
 
