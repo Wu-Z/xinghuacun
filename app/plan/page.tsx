@@ -12,6 +12,7 @@ import { usePlan } from '@/lib/client/plan-session'
 import { readRecommendStream } from '@/lib/client/recommend-stream'
 import { pickRouteMode } from '@/lib/core/route-mode'
 import { applyDiff } from '@/lib/recommend/apply-diff'
+import { inheritSelection } from '@/lib/recommend/inherit-selection'
 import type { LatLng, RecommendPlace, Route } from '@/lib/core/model'
 
 const ROUTE_DEBOUNCE_MS = 400
@@ -131,12 +132,7 @@ export default function PlanPage() {
 
         // 细化完成后，子点继承父级的选中状态 —— 用户的意图不该因为拆解而丢失
         if (task === 'finalize') {
-          const from = inheritFromRef.current
-          setSelectedOrder(
-            acc
-              .filter((p) => (p.parent ? from.includes(p.parent) : from.includes(p.name)))
-              .map((p) => p.name),
-          )
+          setSelectedOrder(inheritSelection(acc, inheritFromRef.current))
         }
       } catch (e) {
         if (id !== reqIdRef.current) return
