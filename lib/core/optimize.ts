@@ -3,23 +3,34 @@ import type { LatLng } from './model'
 
 export type StopPoint = { id: string; point: LatLng }
 
+export type OptimizeInput = {
+  origin: LatLng
+  stops: StopPoint[]
+  /**
+   * 固定终点。给了就**不参与排序**，永远排在最后 ——
+   * 它是「回家/去别处」，不是途中一站。但它的距离要计入总代价，
+   * 否则算出来的顺序会忽略最后一跳。
+   */
+  end?: LatLng
+  /** 可替换的距离函数。默认直线距离，零额外 API 调用 */
+  distance?: (a: LatLng, b: LatLng) => number
+}
+
 /**
- * 求从 origin 出发、走遍所有停靠点的最短顺序。
+ * 求从 origin 出发、走遍所有停靠点、最终抵达 end（若给了）的最短顺序。
  *
  * 停靠点上限是 6（一屏卡片数），6! = 720 种排列，穷举即是精确最优，
- * 用不上启发式。n 再大就不能这么做了 —— 那时要么换 Held-Karp，
- * 要么接受近似解。
+ * 用不上启发式。n 再大就不能这么做了 —— 那时要么换 Held-Karp，要么接受近似解。
  *
  * 距离函数默认是直线距离，**零额外 API 调用**。这一点是刻意的：真实行车
  * 时间需要一张距离矩阵，而高德的批量算路是「1 终点 × N 起点」，n 个点要发
  * n+1 次请求，会直接撞上 QPS（见 09-18 spec 第 9.1 节的事故）。
  * 将来若要更准，传一个可替换的 distance 即可，排序逻辑与测试都不用动。
  */
-export function optimizeOrder(
-  origin: LatLng,
-  stops: StopPoint[],
-  distance: (a: LatLng, b: LatLng) => number = haversineMeters,
-): StopPoint[] {
+export function optimizeOrder(input: OptimizeInput): StopPoint[] {
+  const { origin, stops, end } = input
+  const distance = input.distance ?? haversineMeters
+
   if (stops.length < 2) return stops.slice()
 
   let best: StopPoint[] = []
@@ -30,8 +41,11 @@ export function optimizeOrder(
     if (cost >= bestCost) return
 
     if (remaining.length === 0) {
-      best = path
-      bestCost = cost
+      const total = end ? cost + distance(from, end) : cost
+      if (total < bestCost) {
+        best = path
+        bestCost = total
+      }
       return
     }
 

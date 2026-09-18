@@ -14,32 +14,6 @@ export type Origin = {
 
 export type OpenStatus = 'open' | 'closed' | 'unknown'
 
-export type Poi = {
-  id: string
-  name: string
-  category: string
-  categoryRaw: string
-  point: LatLng
-  distanceMeters: number
-  address: string
-  openStatus: OpenStatus
-  rating?: number
-  score?: number
-  scoreParts?: Record<string, number>
-}
-
-export type Activity = {
-  title: string
-  durationMinutes: number
-  note?: string
-}
-
-export type PoiDetail = Poi & {
-  activities: Activity[]
-  suggestedDurationMinutes: number
-  deriveSource: 'rules'
-}
-
 export type RouteLeg = {
   fromIndex: number
   toIndex: number
@@ -62,24 +36,15 @@ export type Route = {
   polyline: LatLng[]
 }
 
-export type SearchRequest = {
-  origin: LatLng
-  source: OriginSource
-  radiusMinutes: 30 | 60 | 120
-  mode: TravelMode
-  departAt?: string
-}
-
-export type SearchResponse = {
-  origin: Origin
-  pois: Poi[]
-}
-
 export type PlanRequest = {
   origin: LatLng
   stops: { id: string; point: LatLng }[]
   mode: TravelMode
-  departAt?: string
+  /**
+   * 终点。给了就作为最后一段的目的地（不参与顺序优化，固定收尾）。
+   * 不给则默认回到 origin。用户回家还是去别处，由它表达。
+   */
+  end?: LatLng
 }
 
 export type ReverseGeocodeResult = {

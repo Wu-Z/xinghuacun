@@ -26,8 +26,9 @@ const ENDPOINT = {
  * 且某一段失败时可以只降级那一段（见 spec 第 9 节）。
  */
 export const amapRouteProvider: RouteProvider = {
-  async planRoute({ origin, stops, mode, departAt }): Promise<Route> {
-    const points = [origin, ...stops.map((s) => s.point)]
+  async planRoute({ origin, stops, mode, end }): Promise<Route> {
+    // 终点作为最后一个点参与逐段规划，但不进 order —— 它是一站的收尾，不是途中一站
+    const points = [origin, ...stops.map((s) => s.point), ...(end ? [end] : [])]
     const legs: RouteLeg[] = []
 
     for (let i = 0; i < points.length - 1; i++) {
@@ -37,11 +38,13 @@ export const amapRouteProvider: RouteProvider = {
       const toIndex = i
 
       try {
+        // 刻意不传 depart_at：它不是 /v3/direction 的文档化参数，
+        // 实测传合法未来时间结果毫无变化、传非法值直接返回空。
+        // 出发时间只用于时间轴的时刻推算，不送给高德。
         const data = await amapGet<DirectionResponse>(ENDPOINT[mode], {
           origin: `${from.lng},${from.lat}`,
           destination: `${to.lng},${to.lat}`,
           extensions: 'all',
-          depart_at: departAt,
         })
 
         const path = data.route?.paths?.[0]

@@ -16,15 +16,16 @@ export async function POST(req: Request) {
 
   try {
     // 用户勾选的是「一组点」，拜访顺序由我们算最优 ——
-    // 勾选先后不代表出行顺序，用户要的是「帮我规划最优路线」
-    const ordered = optimizeOrder(body.origin, body.stops)
+    // 勾选先后不代表出行顺序，用户要的是「帮我规划最优路线」。
+    // 终点固定收尾，不参与排序，但它的最后一跳计入代价。
+    const ordered = optimizeOrder({ origin: body.origin, stops: body.stops, end: body.end })
 
     return Response.json(
       await getRouteProvider().planRoute({
         origin: body.origin,
         stops: ordered,
         mode: body.mode ?? 'driving',
-        departAt: body.departAt,
+        end: body.end,
       }),
     )
   } catch (error) {

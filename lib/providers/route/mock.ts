@@ -12,8 +12,8 @@ function interpolate(a: LatLng, b: LatLng, steps = 8): LatLng[] {
 }
 
 export const mockRouteProvider: RouteProvider = {
-  async planRoute({ origin, stops, mode }): Promise<Route> {
-    const points = [origin, ...stops.map((s) => s.point)]
+  async planRoute({ origin, stops, mode, end }): Promise<Route> {
+    const points = [origin, ...stops.map((s) => s.point), ...(end ? [end] : [])]
     const legs: RouteLeg[] = []
 
     for (let i = 0; i < points.length - 1; i++) {
