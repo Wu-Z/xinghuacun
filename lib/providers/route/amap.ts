@@ -1,7 +1,7 @@
 import { simplifyPolyline } from '@/lib/core/geo'
 import type { Route, RouteLeg } from '@/lib/core/model'
 import { amapGet } from '../amap-fetch'
-import { parseAmapPolyline } from '../poi/amap'
+import { parseAmapPolyline } from '../amap-polyline'
 import type { RouteProvider } from './types'
 
 type DirectionResponse = {
