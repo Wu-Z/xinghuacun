@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import MapCanvas from '@/components/MapCanvas'
+import { toGcj02 } from '@/lib/core/coordinate'
 import OriginPicker from '@/components/OriginPicker'
 import PoiList from '@/components/PoiList'
 import RouteSummaryBar from '@/components/RouteSummaryBar'
@@ -151,8 +152,10 @@ export default function Home() {
         settled = true
         clearTimeout(timer)
         setLocating(false)
+        // 浏览器给的是 WGS-84，必须先转成 GCJ-02 再交给高德与 skill，
+        // 否则会按偏了 100~700 米的位置去检索，推荐出一批别处的地方
         setOrigin({
-          point: { lng: pos.coords.longitude, lat: pos.coords.latitude },
+          point: toGcj02({ lng: pos.coords.longitude, lat: pos.coords.latitude }, 'geolocation'),
           label: PENDING_LABEL,
           source: 'geolocation',
         })
