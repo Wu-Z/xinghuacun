@@ -7,9 +7,10 @@ export function buildRoutePolyline(AMap: any, route: Route): any {
 
   return new AMap.Polyline({
     path: path.map((p) => [p.lng, p.lat]),
-    strokeColor: '#2563eb',
+    // 深青：高德底图是暖米黄/白，青色在其上对比强，且没有地图产品用青色画路线
+    strokeColor: '#0F6E6E',
     strokeWeight: 6,
-    strokeOpacity: 0.9,
+    strokeOpacity: 0.95,
     lineJoin: 'round',
     zIndex: 200,
   })
@@ -28,7 +29,7 @@ export function buildStopMarkers(AMap: any, specs: StopMarkerSpec[]): any[] {
       content: `<div style="
         display:flex;align-items:center;justify-content:center;
         width:28px;height:28px;border-radius:9999px;
-        background:#2563eb;color:#fff;font-size:13px;font-weight:600;
+        background:#0F6E6E;color:#fff;font-size:13px;font-weight:600;
         border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3);
       ">${badge}</div>`,
       offset: new AMap.Pixel(-14, -14),

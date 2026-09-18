@@ -89,7 +89,8 @@ export default function MapCanvas({
 
     if (origin && !route) map.setCenter([origin.lng, origin.lat])
     if (overlaysRef.current.length > 0) {
-      map.setFitView(overlaysRef.current, false, [60, 60, 60, 60])
+      // 上边留得多一些，避开地图顶部的路线浮层
+      map.setFitView(overlaysRef.current, false, [80, 80, 140, 80])
     }
   }, [origin, pois, selectedOrder, route])
 
@@ -98,13 +99,13 @@ export default function MapCanvas({
       <div ref={containerRef} className={`h-full w-full ${picking ? 'cursor-crosshair' : ''}`} />
 
       {picking && (
-        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-blue-600 px-4 py-1.5 text-sm text-white shadow">
-          点击地图选择出发点
+        <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-md bg-jade px-4 py-2 text-sm font-medium text-white shadow-lg">
+          在地图上点一下，作为出发点
         </div>
       )}
 
       {error && (
-        <div className="absolute inset-x-4 bottom-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 shadow">
+        <div className="absolute inset-x-4 bottom-4 rounded-md bg-paper px-3 py-2 text-sm text-red-700 shadow-lg ring-1 ring-line">
           地图加载失败：{error}
         </div>
       )}

@@ -13,6 +13,14 @@ type Props = {
   onOpenDetail: (id: string) => void
 }
 
+function Note({ children, tone = 'quiet' }: { children: React.ReactNode; tone?: 'quiet' | 'bad' }) {
+  return (
+    <p className={`px-4 py-6 text-sm ${tone === 'bad' ? 'text-red-700' : 'text-ink-soft'}`}>
+      {children}
+    </p>
+  )
+}
+
 export default function PoiList({
   pois,
   selectedOrder,
@@ -22,18 +30,18 @@ export default function PoiList({
   onToggle,
   onOpenDetail,
 }: Props) {
-  if (loading) return <p className="p-3 text-sm text-slate-500">正在找附近的地方…</p>
-  if (error) return <p className="p-3 text-sm text-red-600">{error}</p>
+  if (loading) return <Note>正在找附近的地方…</Note>
+  if (error) return <Note tone="bad">{error}</Note>
   if (pois.length === 0) {
     return (
-      <p className="p-3 text-sm text-slate-500">
-        {hasOrigin ? '附近没有找到合适的地方' : '先用我的位置，或者在地图上点一个出发点'}
-      </p>
+      <Note>
+        {hasOrigin ? '附近没有找到合适的地方，换个范围试试' : '先用我的位置，或者在地图上点一个出发点'}
+      </Note>
     )
   }
 
   return (
-    <div className="space-y-2">
+    <div className="divide-y divide-line">
       {pois.map((poi) => {
         const index = selectedOrder.indexOf(poi.id)
         return (

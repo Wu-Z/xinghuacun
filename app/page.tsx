@@ -189,8 +189,54 @@ export default function Home() {
   }, [])
 
   return (
-    <main className="flex h-dvh flex-col">
-      <div className="relative h-[45%] shrink-0">
+    <main className="flex h-dvh overflow-hidden">
+      <aside className="relative flex w-[400px] shrink-0 flex-col border-r border-line bg-paper">
+        {/* 侧栏统一纸白，只在控件上用淡灰：控件才有可点击的形，背景不抢戏 */}
+        <div className="border-b border-line bg-paper px-4 py-4">
+          <h1 className="mb-3 text-sm font-semibold text-ink">周边去哪</h1>
+          <OriginPicker
+            origin={origin}
+            locating={locating}
+            mode={mode}
+            radiusMinutes={radiusMinutes}
+            onUseGeolocation={useGeolocation}
+            onStartPick={() => setPicking((v) => !v)}
+            picking={picking}
+            onModeChange={setMode}
+            onRadiusChange={setRadiusMinutes}
+          />
+        </div>
+
+        {selectedOrder.length === 1 && (
+          <p className="border-b border-line px-4 py-2 text-xs text-ink-soft">
+            再选一个就能规划路线
+          </p>
+        )}
+
+        <div className="flex-1 overflow-y-auto">
+          <PoiList
+            pois={pois}
+            selectedOrder={selectedOrder}
+            loading={listLoading}
+            error={listError}
+            hasOrigin={origin !== null}
+            onToggle={togglePoi}
+            onOpenDetail={openDetail}
+          />
+        </div>
+
+        <StopDetail
+          detail={detail}
+          loading={detailLoading}
+          error={detailError}
+          onClose={() => {
+            setDetail(null)
+            setDetailError(null)
+          }}
+        />
+      </aside>
+
+      <div className="relative flex-1">
         <MapCanvas
           origin={origin?.point ?? null}
           pois={pois}
@@ -201,44 +247,6 @@ export default function Home() {
         />
         <RouteSummaryBar selectedOrder={selectedOrder} pois={pois} route={route} />
       </div>
-
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
-        <OriginPicker
-          origin={origin}
-          locating={locating}
-          mode={mode}
-          radiusMinutes={radiusMinutes}
-          onUseGeolocation={useGeolocation}
-          onStartPick={() => setPicking((v) => !v)}
-          picking={picking}
-          onModeChange={setMode}
-          onRadiusChange={setRadiusMinutes}
-        />
-
-        {selectedOrder.length === 1 && (
-          <p className="text-xs text-slate-500">再选一个就能规划路线</p>
-        )}
-
-        <PoiList
-          pois={pois}
-          selectedOrder={selectedOrder}
-          loading={listLoading}
-          error={listError}
-          hasOrigin={origin !== null}
-          onToggle={togglePoi}
-          onOpenDetail={openDetail}
-        />
-      </div>
-
-      <StopDetail
-        detail={detail}
-        loading={detailLoading}
-        error={detailError}
-        onClose={() => {
-          setDetail(null)
-          setDetailError(null)
-        }}
-      />
     </main>
   )
 }
