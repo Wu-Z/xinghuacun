@@ -27,4 +27,8 @@ export const mockVerifyProvider: VerifyProvider = {
       openStatus: 'open' as const,
     }
   },
+
+  async reverseGeocode() {
+    return { label: '示例市中心区域', city: '示例市' }
+  },
 }

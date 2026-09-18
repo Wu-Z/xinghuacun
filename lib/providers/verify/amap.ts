@@ -1,3 +1,4 @@
+import { blurAddress } from '@/lib/core/address'
 import { asText } from '@/lib/core/coerce'
 import { haversineMeters } from '@/lib/core/geo'
 import type { LatLng, OpenStatus } from '@/lib/core/model'
@@ -73,6 +74,46 @@ export const amapVerifyProvider: VerifyProvider = {
       // 但必须留痕，不能静默吞错。
       console.error(`[verify/amap] 取营业状态失败：${name}`, error)
       return { ...result, openStatus: 'unknown' }
+    }
+  },
+
+  async reverseGeocode(point) {
+    type RegeoResponse = {
+      regeocode?: {
+        addressComponent?: {
+          province?: unknown
+          city?: unknown
+          district?: unknown
+          township?: unknown
+          streetNumber?: unknown
+        }
+      }
+    }
+
+    const data = await amapGet<RegeoResponse>('/v3/geocode/regeo', {
+      location: `${point.lng},${point.lat}`,
+      extensions: 'base',
+    })
+
+    const comp = data.regeocode?.addressComponent
+    // 直辖市会返回 city 为空数组而不是字符串，这是高德返回结构里真实存在的坑
+    const cityText = asText(comp?.city)
+
+    const streetNumber = comp?.streetNumber
+    const street =
+      streetNumber && typeof streetNumber === 'object' && !Array.isArray(streetNumber)
+        ? asText((streetNumber as { street?: unknown }).street)
+        : ''
+
+    return {
+      label: blurAddress({
+        province: asText(comp?.province),
+        city: cityText,
+        district: asText(comp?.district),
+        township: asText(comp?.township),
+        street,
+      }),
+      city: cityText || asText(comp?.province),
     }
   },
 }

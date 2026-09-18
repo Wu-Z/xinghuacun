@@ -15,9 +15,12 @@ function loadPrompt(): string {
 }
 
 /** 按 skill README 描述的三段式组装输入 */
-export function buildUserMessage(req: RecommendRequest): string {
+export function buildUserMessage(
+  req: RecommendRequest,
+  place: { label: string; city: string },
+): string {
   return [
-    `位置：${req.origin.name}（城市 ${req.origin.city}）`,
+    `位置：${place.label}（城市 ${place.city}）`,
     req.origin.point
       ? `坐标：${req.origin.point.lng},${req.origin.point.lat}（坐标系 GCJ-02）`
       : '坐标：无，请以位置名称为准',
@@ -46,12 +49,29 @@ export async function recommend(req: RecommendRequest): Promise<RecommendOutcome
     }
   }
 
+  const verify = getVerifyProvider()
+  const origin = req.origin.point ?? { lng: 0, lat: 0 }
+
+  // skill 要「位置名称 + 城市」，而客户端只知道坐标 —— 由服务端逆地理编码补上。
+  // 拿不到地名不该让整件事失败，退化成纯坐标也能继续。
+  let place = { label: '', city: '' }
+  if (req.origin.point) {
+    try {
+      place = await verify.reverseGeocode(req.origin.point)
+    } catch (error) {
+      console.error('[recommend] 逆地理编码失败，退化为纯坐标', error)
+    }
+  }
+  if (!place.label && !place.city) {
+    return { ok: false, failure: { reason: '无法确定出发点所在城市，请换一个位置试试' } }
+  }
+
   const call = await callDeepseekJson({
     apiKey,
     baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
     model,
     system: loadPrompt(),
-    user: buildUserMessage(req),
+    user: buildUserMessage(req, place),
   })
 
   if (!call.ok) {
@@ -72,8 +92,6 @@ export async function recommend(req: RecommendRequest): Promise<RecommendOutcome
     return { ok: false, failure: { reason: `回包结构不符合约定：${parsed.problems[0]}` } }
   }
 
-  const verify = getVerifyProvider()
-  const origin = req.origin.point ?? { lng: 0, lat: 0 }
   const places: RecommendPlace[] = []
 
   // 逐条核实，串行 + 小延迟：高德 QPS 是按秒掐的，
@@ -85,7 +103,7 @@ export async function recommend(req: RecommendRequest): Promise<RecommendOutcome
       const v = await verify.verify({
         name: rec.name,
         address: rec.address,
-        city: req.origin.city,
+        city: place.city,
         origin,
       })
       places.push({ ...rec, ...v })

@@ -12,8 +12,8 @@ export async function POST(req: Request) {
     return Response.json({ error: '推荐失败', reason: '请求体不是合法 JSON' }, { status: 400 })
   }
 
-  if (!body?.origin?.city || !body?.preferences) {
-    return Response.json({ error: '推荐失败', reason: '缺少位置或偏好' }, { status: 400 })
+  if (!body?.origin?.point || !body?.preferences) {
+    return Response.json({ error: '推荐失败', reason: '缺少出发点或偏好' }, { status: 400 })
   }
 
   try {

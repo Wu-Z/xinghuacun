@@ -3,13 +3,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from 'react'
 import { loadAmap } from '@/lib/amap/loader'
-import type { LatLng, Poi, Route } from '@/lib/core/model'
+import type { LatLng, RecommendPlace, Route } from '@/lib/core/model'
 import { buildRoutePolyline, buildStopMarkers, type StopMarkerSpec } from './RouteOverlay'
 
 type Props = {
   origin: LatLng | null
-  pois: Poi[]
-  selectedOrder: string[]
+  places: RecommendPlace[]
+  /** 拜访顺序，存的是地点名。顺序由服务端算最优后返回 */
+  visitOrder: string[]
   route: Route | null
   picking: boolean
   onPickLocation: (point: LatLng) => void
@@ -17,8 +18,8 @@ type Props = {
 
 export default function MapCanvas({
   origin,
-  pois,
-  selectedOrder,
+  places,
+  visitOrder,
   route,
   picking,
   onPickLocation,
@@ -73,9 +74,10 @@ export default function MapCanvas({
     const specs: StopMarkerSpec[] = []
     if (origin) {
       specs.push({ point: origin, label: '出发点', order: 0 })
-      selectedOrder.forEach((id, index) => {
-        const poi = pois.find((p) => p.id === id)
-        if (poi) specs.push({ point: poi.point, label: poi.name, order: index + 1 })
+      visitOrder.forEach((name, index) => {
+        const place = places.find((p) => p.name === name)
+        // 未能核实的地点没有坐标，上不了图
+        if (place?.point) specs.push({ point: place.point, label: place.name, order: index + 1 })
       })
     }
     overlaysRef.current.push(...buildStopMarkers(AMap, specs))
@@ -92,7 +94,7 @@ export default function MapCanvas({
       // 上边留得多一些，避开地图顶部的路线浮层
       map.setFitView(overlaysRef.current, false, [80, 80, 140, 80])
     }
-  }, [origin, pois, selectedOrder, route])
+  }, [origin, places, visitOrder, route])
 
   return (
     <div className="relative h-full w-full">

@@ -20,4 +20,6 @@ export type Verification = {
 
 export type VerifyProvider = {
   verify(input: VerifyInput): Promise<Verification>
+  /** 逆地理编码。label 必须已经模糊到不细于街区 */
+  reverseGeocode(point: LatLng): Promise<{ label: string; city: string }>
 }

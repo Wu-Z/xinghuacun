@@ -2,136 +2,115 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import MapCanvas from '@/components/MapCanvas'
-import { toGcj02 } from '@/lib/core/coordinate'
 import OriginPicker from '@/components/OriginPicker'
-import PoiList from '@/components/PoiList'
+import PreferenceForm, { EMPTY_PREFERENCES, type Preferences } from '@/components/PreferenceForm'
+import RecommendList from '@/components/RecommendList'
+import RecommendSummary from '@/components/RecommendSummary'
 import RouteSummaryBar from '@/components/RouteSummaryBar'
 import StopDetail from '@/components/StopDetail'
-import type {
-  LatLng,
-  Origin,
-  OriginSource,
-  Poi,
-  PoiDetail,
-  Route,
-  SearchResponse,
-  TravelMode,
-} from '@/lib/core/model'
+import { toGcj02 } from '@/lib/core/coordinate'
+import type { LatLng, Origin, RecommendPlace, Route } from '@/lib/core/model'
 
 const GEO_TIMEOUT_MS = 5000
 const PENDING_LABEL = '已选位置'
-// 高德 QPS 限制是真实约束，等手停下来再请求，避免连点造成请求风暴
+// 高德 QPS 是按秒掐的，等手停下来再请求，避免连点造成请求风暴
 const ROUTE_DEBOUNCE_MS = 400
+
+type RecommendMeta = { assumptions: string[]; unverified: string[] }
+
+// 模块级常量：写成 `?? []` 会让每次渲染都产生新引用，
+// 进而让依赖它们的 effect 每帧都重跑
+const EMPTY_META: RecommendMeta = { assumptions: [], unverified: [] }
+const NO_PLACES: RecommendPlace[] = []
+const NO_EXCLUDED: { name: string; reason: string }[] = []
 
 export default function Home() {
   const [origin, setOrigin] = useState<Origin | null>(null)
-  const [mode, setMode] = useState<TravelMode>('driving')
-  const [radiusMinutes, setRadiusMinutes] = useState<30 | 60 | 120>(60)
   const [locating, setLocating] = useState(false)
   const [picking, setPicking] = useState(false)
 
-  const [pois, setPois] = useState<Poi[]>([])
+  const [prefs, setPrefs] = useState<Preferences>(EMPTY_PREFERENCES)
+  const [formOpen, setFormOpen] = useState(true)
+  const [recommending, setRecommending] = useState(false)
+  const [recommendError, setRecommendError] = useState<string | null>(null)
+
+  // 结果与产生它的条件绑在一起。条件一变，旧结果在渲染时即被判为过期 ——
+  // 不需要 effect 去清，也就不会出现「旧结果闪一下」。
+  const [result, setResult] = useState<{
+    key: string
+    places: RecommendPlace[]
+    excluded: { name: string; reason: string }[]
+    meta: RecommendMeta
+  } | null>(null)
+
   const [selectedOrder, setSelectedOrder] = useState<string[]>([])
   const [routeState, setRouteState] = useState<{ key: string; route: Route } | null>(null)
+  const [detailName, setDetailName] = useState<string | null>(null)
 
-  const [listLoading, setListLoading] = useState(false)
-  const [listError, setListError] = useState<string | null>(null)
+  const recommendIdRef = useRef(0)
 
-  const [detail, setDetail] = useState<PoiDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [detailError, setDetailError] = useState<string | null>(null)
+  const conditionsKey = origin ? `${origin.point.lng},${origin.point.lat}|${JSON.stringify(prefs)}` : null
+  const current = result && result.key === conditionsKey ? result : null
+  const places = current?.places ?? NO_PLACES
+  const excluded = current?.excluded ?? NO_EXCLUDED
+  const meta = current?.meta ?? EMPTY_META
 
-  const requestIdRef = useRef(0)
-  const lastSearchedRef = useRef('')
+  // ── 显式触发推荐。skill 是 LLM 调用，慢且花钱，不能跟着输入自动跑 ──
+  const runRecommend = useCallback(async () => {
+    if (!origin) {
+      setRecommendError('先选一个出发点')
+      return
+    }
 
-  const search = useCallback(
-    async (point: LatLng, source: OriginSource) => {
-      const id = ++requestIdRef.current
-      setListLoading(true)
-      setListError(null)
+    const id = ++recommendIdRef.current
+    setRecommending(true)
+    setRecommendError(null)
 
-      try {
-        const res = await fetch('/api/poi/search', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ origin: point, source, radiusMinutes, mode }),
-        })
-        const data = (await res.json()) as SearchResponse & { error?: string }
-        if (!res.ok) throw new Error(data.error ?? '周边搜索失败')
-
-        // 定位、选点、改条件都会触发搜索，慢的请求回来时可能已经过期
-        if (id !== requestIdRef.current) return
-
-        setPois(data.pois)
-        setOrigin({ point, label: data.origin.label, source })
-        // 清了选择，路线自然失效，不需要单独清 route
-        setSelectedOrder([])
-      } catch (e) {
-        if (id !== requestIdRef.current) return
-        setListError(e instanceof Error ? e.message : '周边搜索失败')
-      } finally {
-        if (id === requestIdRef.current) setListLoading(false)
-      }
-    },
-    [mode, radiusMinutes],
-  )
-
-  // 搜索只由 origin / 条件变化驱动，保证一个出发点只搜一次
-  useEffect(() => {
-    if (!origin) return
-    const fingerprint = `${origin.point.lng},${origin.point.lat}|${mode}|${radiusMinutes}`
-    if (fingerprint === lastSearchedRef.current) return
-
-    lastSearchedRef.current = fingerprint
-    void search(origin.point, origin.source)
-  }, [origin, mode, radiusMinutes, search])
-
-  // 路线的有效性与它的输入绑定：只要选中的点、顺序、出行方式或出发点变了，
-  // 旧路线就在渲染时被判为过期，而不是靠 effect 去清状态
-  const routeKey =
-    selectedOrder.length >= 2 && origin
-      ? `${selectedOrder.join(',')}|${mode}|${origin.point.lng},${origin.point.lat}`
-      : null
-  const route = routeState && routeState.key === routeKey ? routeState.route : null
-
-  // 选中 2 个以上才规划路线；顺序即勾选顺序。
-  //
-  // 防抖是必须的，不是优化：连点 4 张卡会触发 3 次请求，每次服务端要打 N 次高德，
-  // 1 秒内十几次调用就会撞上高德的 QPS 限制（CUQPS_HAS_EXCEEDED_THE_LIMIT）。
-  // 等手停下来再发一次，把请求风暴从源头掐掉。
-  useEffect(() => {
-    if (!routeKey || !origin) return
-
-    const controller = new AbortController()
-    const timer = setTimeout(() => {
-      const stops = selectedOrder
-        .map((id) => pois.find((p) => p.id === id))
-        .filter((p): p is Poi => Boolean(p))
-        .map((p) => ({ id: p.id, point: p.point }))
-
-      void fetch('/api/route/plan', {
+    try {
+      const res = await fetch('/api/recommend', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ origin: origin.point, stops, mode }),
-        signal: controller.signal,
+        body: JSON.stringify({
+          origin: { point: origin.point },
+          destination: {
+            mode: prefs.destination.trim() ? 'specified' : 'nearby',
+            requested: prefs.destination.trim() || null,
+          },
+          preferences: {
+            intents: prefs.intents,
+            timeBudget: prefs.timeBudget,
+            travelMode: prefs.travelMode,
+            companions: prefs.companions,
+            crowdTolerance: prefs.crowdTolerance,
+          },
+        }),
       })
-        .then((res) => res.json())
-        .then((data: Route & { error?: string }) => {
-          if (controller.signal.aborted || data.error) return
-          setRouteState({ key: routeKey, route: data })
-        })
-        .catch(() => undefined)
-    }, ROUTE_DEBOUNCE_MS)
 
-    return () => {
-      clearTimeout(timer)
-      controller.abort()
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.reason ?? '未知原因')
+      if (id !== recommendIdRef.current) return
+
+      setResult({
+        key: `${origin.point.lng},${origin.point.lat}|${JSON.stringify(prefs)}`,
+        places: data.places ?? [],
+        excluded: data.excluded ?? [],
+        meta: data.meta ?? EMPTY_META,
+      })
+      setSelectedOrder([])
+      setDetailName(null)
+      // 表单的使命结束，把空间让给结果
+      setFormOpen(false)
+    } catch (e) {
+      if (id !== recommendIdRef.current) return
+      setRecommendError(e instanceof Error ? e.message : '未知原因')
+    } finally {
+      if (id === recommendIdRef.current) setRecommending(false)
     }
-  }, [routeKey, origin, pois, selectedOrder, mode])
+  }, [origin, prefs])
 
   const useGeolocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setListError('这个浏览器拿不到定位，直接在地图上选点吧')
+      setRecommendError('这个浏览器拿不到定位，直接在地图上选点吧')
       return
     }
 
@@ -143,7 +122,7 @@ export default function Home() {
       if (settled) return
       settled = true
       setLocating(false)
-      setListError('定位超时了，直接在地图上选点吧')
+      setRecommendError('定位超时了，直接在地图上选点吧')
     }, GEO_TIMEOUT_MS)
 
     navigator.geolocation.getCurrentPosition(
@@ -159,13 +138,14 @@ export default function Home() {
           label: PENDING_LABEL,
           source: 'geolocation',
         })
+        setFormOpen(true)
       },
       () => {
         if (settled) return
         settled = true
         clearTimeout(timer)
         setLocating(false)
-        setListError('没拿到定位权限，直接在地图上选点吧')
+        setRecommendError('没拿到定位权限，直接在地图上选点吧')
       },
       { timeout: GEO_TIMEOUT_MS, enableHighAccuracy: false },
     )
@@ -176,89 +156,144 @@ export default function Home() {
       if (!picking) return
       setPicking(false)
       setOrigin({ point, label: PENDING_LABEL, source: 'map-pick' })
+      setFormOpen(true)
     },
     [picking],
   )
 
-  const togglePoi = useCallback((id: string) => {
-    setSelectedOrder((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  // 改偏好就是要重新推荐，所以顺手把表单展开
+  const changePrefs = useCallback((next: Preferences) => {
+    setPrefs(next)
+    setFormOpen(true)
   }, [])
 
-  const openDetail = useCallback(async (id: string) => {
-    setDetailLoading(true)
-    setDetailError(null)
-    setDetail(null)
+  // ── 路线：勾选的是「一组点」，拜访顺序由服务端算最优后返回 ──
+  const routeKey =
+    selectedOrder.length >= 2 && origin
+      ? `${selectedOrder.join(',')}|${origin.point.lng},${origin.point.lat}`
+      : null
+  const route = routeState && routeState.key === routeKey ? routeState.route : null
+  // 编号用拜访顺序，不是勾选顺序 —— 否则用户看到的编号与实际路线不符
+  const visitOrder = route?.order ?? selectedOrder
 
-    try {
-      const res = await fetch(`/api/poi/${encodeURIComponent(id)}`)
-      const data = (await res.json()) as PoiDetail & { error?: string }
-      if (!res.ok) throw new Error(data.error ?? '获取详情失败')
-      setDetail(data)
-    } catch (e) {
-      setDetailError(e instanceof Error ? e.message : '获取详情失败')
-    } finally {
-      setDetailLoading(false)
+  useEffect(() => {
+    if (!routeKey || !origin) return
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      const stops = selectedOrder
+        .map((name) => places.find((p) => p.name === name))
+        .filter((p): p is RecommendPlace => Boolean(p?.point))
+        .map((p) => ({ id: p.name, point: p.point as LatLng }))
+
+      void fetch('/api/route/plan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ origin: origin.point, stops, mode: 'driving' }),
+        signal: controller.signal,
+      })
+        .then((res) => res.json())
+        .then((data: Route & { error?: string }) => {
+          if (controller.signal.aborted || data.error) return
+          setRouteState({ key: routeKey, route: data })
+        })
+        .catch(() => undefined)
+    }, ROUTE_DEBOUNCE_MS)
+
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
     }
+  }, [routeKey, origin, places, selectedOrder])
+
+  const togglePlace = useCallback((name: string) => {
+    setSelectedOrder((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]))
   }, [])
+
+  const detail = detailName ? (places.find((p) => p.name === detailName) ?? null) : null
 
   return (
     <main className="flex h-dvh overflow-hidden">
-      <aside className="relative flex w-[400px] shrink-0 flex-col border-r border-line bg-paper">
-        {/* 侧栏统一纸白，只在控件上用淡灰：控件才有可点击的形，背景不抢戏 */}
-        <div className="border-b border-line bg-paper px-4 py-4">
+      <aside className="relative flex w-[430px] shrink-0 flex-col border-r border-line bg-paper">
+        <div className="shrink-0 border-b border-line px-4 py-4">
           <h1 className="mb-3 text-sm font-semibold text-ink">周边去哪</h1>
           <OriginPicker
             origin={origin}
             locating={locating}
-            mode={mode}
-            radiusMinutes={radiusMinutes}
             onUseGeolocation={useGeolocation}
             onStartPick={() => setPicking((v) => !v)}
             picking={picking}
-            onModeChange={setMode}
-            onRadiusChange={setRadiusMinutes}
           />
         </div>
 
-        {selectedOrder.length === 1 && (
-          <p className="border-b border-line px-4 py-2 text-xs text-ink-soft">
-            再选一个就能规划路线
-          </p>
-        )}
+        <div className="shrink-0 border-b border-line px-4 py-4">
+          {formOpen ? (
+            <PreferenceForm
+              value={prefs}
+              onChange={changePrefs}
+              onSubmit={runRecommend}
+              busy={recommending}
+            />
+          ) : (
+            <RecommendSummary
+              location={origin?.label ?? '未选出发点'}
+              value={prefs}
+              onEdit={() => setFormOpen(true)}
+            />
+          )}
+        </div>
 
         <div className="flex-1 overflow-y-auto">
-          <PoiList
-            pois={pois}
-            selectedOrder={selectedOrder}
-            loading={listLoading}
-            error={listError}
-            hasOrigin={origin !== null}
-            onToggle={togglePoi}
-            onOpenDetail={openDetail}
-          />
+          {recommending && (
+            <p className="px-4 py-6 text-sm text-ink-soft">
+              正在找附近值得去的地方…（要跑一次联网检索，需要几秒）
+            </p>
+          )}
+
+          {!recommending && recommendError && (
+            <div className="px-4 py-6 text-sm">
+              <p className="font-medium text-red-700">推荐失败</p>
+              <p className="mt-1 text-ink-soft">{recommendError}</p>
+              <button
+                onClick={runRecommend}
+                className="mt-3 rounded-md bg-mist px-3 py-1.5 text-xs text-ink hover:bg-line"
+              >
+                重试
+              </button>
+            </div>
+          )}
+
+          {!recommending && !recommendError && places.length === 0 && (
+            <p className="px-4 py-6 text-sm text-ink-soft">
+              选好出发点和偏好，点「帮我推荐」
+            </p>
+          )}
+
+          {!recommending && places.length > 0 && (
+            <RecommendList
+              places={places}
+              visitOrder={visitOrder}
+              excluded={excluded}
+              meta={meta}
+              onToggle={togglePlace}
+              onOpenDetail={setDetailName}
+            />
+          )}
         </div>
 
-        <StopDetail
-          detail={detail}
-          loading={detailLoading}
-          error={detailError}
-          onClose={() => {
-            setDetail(null)
-            setDetailError(null)
-          }}
-        />
+        <StopDetail place={detail} onClose={() => setDetailName(null)} />
       </aside>
 
       <div className="relative flex-1">
         <MapCanvas
           origin={origin?.point ?? null}
-          pois={pois}
-          selectedOrder={selectedOrder}
+          places={places}
+          visitOrder={visitOrder}
           route={route}
           picking={picking}
           onPickLocation={handlePickLocation}
         />
-        <RouteSummaryBar selectedOrder={selectedOrder} pois={pois} route={route} />
+        <RouteSummaryBar visitOrder={visitOrder} route={route} />
       </div>
     </main>
   )

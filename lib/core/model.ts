@@ -8,6 +8,8 @@ export type Origin = {
   point: LatLng
   label: string
   source: OriginSource
+  /** 城市名。skill 要它来消歧同名地点；拿不到时传空串，由服务端兜底 */
+  city?: string
 }
 
 export type OpenStatus = 'open' | 'closed' | 'unknown'
@@ -120,14 +122,11 @@ export type RecommendResult = {
   meta: { assumptions: string[]; unverified: string[]; disclaimer?: string }
 }
 
-/** 平台组装给 skill 的输入 */
+/** 前端发来的推荐请求。城市与地名由服务端逆地理编码得出，客户端不知道也不该猜。 */
 export type RecommendRequest = {
   origin: {
-    name: string
-    city: string
+    /** 恒为 GCJ-02 —— 平台在发出前已统一转换 */
     point: LatLng | null
-    /** 平台在发出前已统一转换，所以恒为 GCJ-02 */
-    coordSystem: 'GCJ-02' | null
   }
   destination: {
     /** 用户填了「想去哪」→ specified，留空 → nearby */
