@@ -58,9 +58,22 @@ function collect(): Block[] {
   return out
 }
 
-/** 文档里刻意写的反例，预期失败 */
-function isNegative(before: string): boolean {
-  return /反例|✗|不要这样|会被判失败|错误写法/.test(before)
+/**
+ * 文档里刻意写的反例，预期失败。
+ *
+ * 判据不能只看「块前面的 320 字」——反例与正确示例常常紧挨着写，
+ * 那个窗口会跨到相邻块，把跟在反例后面的正面例子一起误判。
+ * 实测就撞到过：在某块标题里写了「反例」二字，紧跟其后的正确输出块
+ * 立刻被判成反例、测试报红，最后只能改文档措辞绕开它。
+ * **判据脆弱到反过来限制文档怎么写，就该修判据而不是改措辞。**
+ *
+ * 两条更紧的判据：块内自己有 ❌ / ✗ 标注，或紧邻的那一行写明了「反例 / 错误」。
+ */
+function isNegative(b: Block): boolean {
+  if (/❌|✗/.test(b.json)) return true
+  const lines = b.before.trimEnd().split('\n')
+  const lastLine = lines[lines.length - 1] ?? ''
+  return /反例|错误|不要这样|会被判失败/.test(lastLine)
 }
 
 const blocks = collect()
@@ -96,7 +109,7 @@ describe('skill 文档与样例 ⇄ 平台解析器', () => {
         continue
       }
       const obj = parsed as Record<string, unknown>
-      const negative = isNegative(b.before)
+      const negative = isNegative(b)
 
       if (Array.isArray(obj.recommendations)) {
         const r = parseSkillOutput(obj)
@@ -165,7 +178,7 @@ describe('skill 文档与样例 ⇄ 平台解析器', () => {
     // 模型有相当概率照抄这个键，产出缺 amap_url / fit 的条目 → 平台判 ok:false。
     const bad: string[] = []
     for (const b of blocks) {
-      if (isNegative(b.before)) continue
+      if (isNegative(b)) continue
       const hits = b.json.match(/"(\.{2,}|其余字段[^"]*|同上[^"]*|省略[^"]*)"\s*:/g)
       if (hits) bad.push(`${b.file.split('/').pop()} 块${b.index}: ${hits.join(' , ')}`)
     }
