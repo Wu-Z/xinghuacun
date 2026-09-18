@@ -84,3 +84,61 @@ export type ReverseGeocodeResult = {
   label: string
   city: string
 }
+
+/** skill 给出的推荐，合并高德核实结果后的形态 */
+export type RecommendPlace = {
+  rank: number
+  tier: string
+  name: string
+  category: string
+  address: string
+  fit: { tag: string; why: string }[]
+  crowdLevel?: string
+  crowdNote?: string
+  indoorOutdoor?: string
+  bestTime?: string
+  cost?: string
+  transitHint?: string
+  itinerary?: { time: string; action: string }[]
+  pickIf?: string
+  tradeOff?: string
+  amapUrl: string
+  confidence?: string
+  source?: string
+  // 以下由高德核实层补充
+  point: LatLng | null
+  verified: boolean
+  verifiedName?: string
+  /** 直线距离 —— 不是驾车距离，界面必须标明 */
+  distanceMeters?: number
+  openStatus?: OpenStatus
+}
+
+export type RecommendResult = {
+  places: RecommendPlace[]
+  excluded: { name: string; reason: string }[]
+  meta: { assumptions: string[]; unverified: string[]; disclaimer?: string }
+}
+
+/** 平台组装给 skill 的输入 */
+export type RecommendRequest = {
+  origin: {
+    name: string
+    city: string
+    point: LatLng | null
+    /** 平台在发出前已统一转换，所以恒为 GCJ-02 */
+    coordSystem: 'GCJ-02' | null
+  }
+  destination: {
+    /** 用户填了「想去哪」→ specified，留空 → nearby */
+    mode: 'nearby' | 'specified'
+    requested: string | null
+  }
+  preferences: {
+    intents: string[]
+    timeBudget: string | null
+    travelMode: string[]
+    companions: number | null
+    crowdTolerance: 'low' | 'medium' | 'high' | null
+  }
+}

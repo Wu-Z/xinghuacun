@@ -1,4 +1,5 @@
 import type { PlanRequest } from '@/lib/core/model'
+import { optimizeOrder } from '@/lib/core/optimize'
 import { getRouteProvider } from '@/lib/providers/route'
 
 export async function POST(req: Request) {
@@ -14,10 +15,14 @@ export async function POST(req: Request) {
   }
 
   try {
+    // 用户勾选的是「一组点」，拜访顺序由我们算最优 ——
+    // 勾选先后不代表出行顺序，用户要的是「帮我规划最优路线」
+    const ordered = optimizeOrder(body.origin, body.stops)
+
     return Response.json(
       await getRouteProvider().planRoute({
         origin: body.origin,
-        stops: body.stops,
+        stops: ordered,
         mode: body.mode ?? 'driving',
         departAt: body.departAt,
       }),
