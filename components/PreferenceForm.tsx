@@ -1,15 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-
-export type Preferences = {
-  intents: string[]
-  timeBudget: string | null
-  travelMode: string[]
-  companions: number | null
-  crowdTolerance: 'low' | 'medium' | 'high' | null
-  destination: string
-}
+import type { Preferences } from '@/lib/core/model'
 
 export const EMPTY_PREFERENCES: Preferences = {
   intents: [],
@@ -17,6 +9,7 @@ export const EMPTY_PREFERENCES: Preferences = {
   travelMode: [],
   companions: null,
   crowdTolerance: null,
+  rawRequest: '',
   destination: '',
 }
 
@@ -57,6 +50,17 @@ export default function PreferenceForm({ value, onChange, onSubmit, busy }: Prop
 
   return (
     <div className="space-y-3">
+      {/* 自由输入与预设标签并存，两者都会传给 skill */}
+      <div>
+        <textarea
+          value={value.rawRequest}
+          onChange={(e) => onChange({ ...value, rawRequest: e.target.value })}
+          rows={2}
+          placeholder="也可以直接说，例如：想找个能坐下来喝咖啡、人不多的老街区"
+          className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-ink-soft/70 focus:border-jade"
+        />
+      </div>
+
       <Field label="想干什么">
         {INTENTS.map((i) => (
           <button

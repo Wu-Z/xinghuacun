@@ -1,6 +1,6 @@
 'use client'
 
-import type { Preferences } from './PreferenceForm'
+import type { Preferences } from '@/lib/core/model'
 
 type Props = { location: string; value: Preferences; onEdit: () => void }
 

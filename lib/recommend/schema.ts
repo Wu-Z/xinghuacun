@@ -9,6 +9,10 @@ export type SkillRecommendation = {
   name: string
   category: string
   address: string
+  /** 复合地点包含的子点。有值时界面会提示「细化后会拆开」 */
+  contains?: string[]
+  /** 细化后：属于哪个复合地点。null 表示本身就是单一地点，原样透传 */
+  parent?: string | null
   fit: SkillFit[]
   crowdLevel?: string
   crowdNote?: string
@@ -114,12 +118,18 @@ export function parseSkillOutput(raw: unknown): Parsed {
           .filter((s) => s.time && s.action)
       : []
 
+    const contains = Array.isArray(item.contains)
+      ? item.contains.map(text).filter(Boolean)
+      : []
+
     recommendations.push({
       rank: typeof item.rank === 'number' ? item.rank : i + 1,
       tier: text(item.tier) || '备选',
       name,
       category: text(item.category) || '未分类',
       address: text(item.address),
+      contains: contains.length > 0 ? contains : undefined,
+      parent: text(item.parent) || null,
       fit,
       crowdLevel: text(item.crowd_level) || undefined,
       crowdNote: text(item.crowd_note) || undefined,

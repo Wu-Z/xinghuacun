@@ -6,6 +6,9 @@ import { loadAmap } from '@/lib/amap/loader'
 import type { LatLng, RecommendPlace, Route } from '@/lib/core/model'
 import { buildRoutePolyline, buildStopMarkers, type StopMarkerSpec } from './RouteOverlay'
 
+/** 地图初始中心：用户还没选点、也没定位时显示的区域 */
+const DEFAULT_CENTER: LatLng = { lng: 118.097, lat: 24.573 } // 厦门集美
+
 type Props = {
   origin: LatLng | null
   places: RecommendPlace[]
@@ -45,7 +48,9 @@ export default function MapCanvas({
 
         const map = new AMap.Map(containerRef.current, {
           zoom: 12,
-          center: [116.4, 39.9],
+          // 用户选点之前地图显示哪片区域。原先硬编码成北京是随意的；
+          // 演示数据在厦门集美，所以这里指向那里。
+          center: [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat],
           viewMode: '2D',
         })
         map.on('click', (e: any) => {

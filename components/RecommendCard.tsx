@@ -8,11 +8,12 @@ type Props = {
   order: number | null
   onToggle: (name: string) => void
   onOpenDetail: (name: string) => void
+  onAsk: (name: string) => void
 }
 
 const STATUS: Record<string, string> = { open: '营业中', closed: '已打烊', unknown: '' }
 
-export default function RecommendCard({ place, order, onToggle, onOpenDetail }: Props) {
+export default function RecommendCard({ place, order, onToggle, onOpenDetail, onAsk }: Props) {
   const selectable = place.verified
   const selected = order !== null
 
@@ -64,6 +65,15 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail }: 
 
         <div className="mt-1 text-xs text-ink-soft">{place.category}</div>
 
+        {/* 复合地点：提前告诉用户细化后会被拆开，否则列表突然变样会懵 */}
+        {place.contains && place.contains.length > 0 && (
+          <div className="mt-2 rounded-md bg-mist px-2.5 py-1.5 text-[11.5px] leading-relaxed text-ink-soft">
+            含 {place.contains.length} 个可玩点：{place.contains.join(' / ')}
+            <br />
+            选定后会拆成独立站点，才能逐个规划路线
+          </div>
+        )}
+
         {place.fit.length > 0 && (
           <div className="mt-2 space-y-1">
             {place.fit.map((f) => (
@@ -96,6 +106,14 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail }: 
             </AmapLink>
           </div>
         )}
+      </button>
+
+      {/* 追问入口：只针对这一个地点 */}
+      <button
+        onClick={() => onAsk(place.name)}
+        className="shrink-0 self-start rounded-md px-2 py-1 text-[11.5px] text-ink-soft transition-colors hover:bg-mist hover:text-jade"
+      >
+        追问
       </button>
     </div>
   )
