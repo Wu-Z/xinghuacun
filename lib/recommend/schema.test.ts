@@ -141,3 +141,44 @@ describe('parseSkillOutput', () => {
     if (r.ok) expect(r.value.recommendations[0].rank).toBe(1)
   })
 })
+
+describe('amap_url 安全性', () => {
+  const withUrl = (url: string) =>
+    parseSkillOutput({
+      ...good,
+      recommendations: [{ ...good.recommendations[0], amap_url: url }],
+    })
+
+  it('接受高德域名下的 https 链接', () => {
+    expect(withUrl('https://uri.amap.com/search?keyword=x').ok).toBe(true)
+    expect(withUrl('https://www.amap.com/place/B123').ok).toBe(true)
+    expect(withUrl('http://amap.com/x').ok).toBe(true)
+  })
+
+  it('拒绝 javascript: —— 这是提示词注入到 XSS 的主路径', () => {
+    const r = withUrl('javascript:alert(document.cookie)')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.problems.join()).toContain('amap_url')
+  })
+
+  it('拒绝 data: 与 vbscript:', () => {
+    expect(withUrl('data:text/html,<script>alert(1)</script>').ok).toBe(false)
+    expect(withUrl('vbscript:msgbox(1)').ok).toBe(false)
+  })
+
+  it('拒绝伪装成高德域名的恶意主机', () => {
+    // 朴素的 endsWith('amap.com') 会放过这个
+    expect(withUrl('https://amap.com.evil.com/x').ok).toBe(false)
+    expect(withUrl('https://evil-amap.com/x').ok).toBe(false)
+    expect(withUrl('https://notamap.com/x').ok).toBe(false)
+  })
+
+  it('拒绝不是合法 URL 的字符串', () => {
+    expect(withUrl('这不是链接').ok).toBe(false)
+    expect(withUrl('//uri.amap.com/x').ok).toBe(false)
+  })
+
+  it('拒绝其它域名', () => {
+    expect(withUrl('https://evil.com/x').ok).toBe(false)
+  })
+})

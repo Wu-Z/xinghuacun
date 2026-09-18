@@ -44,6 +44,28 @@ function text(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
 }
 
+/**
+ * amap_url 会直接渲染成 <a href>，而它来自 LLM 输出 ——
+ * 模型又是被要求联网检索的，于是恶意网页能通过提示词注入把
+ * `javascript:...` 塞进这个字段，用户一点就执行。
+ *
+ * 所以这里必须验，而且不能只验协议：`amap.com.evil.com` 这种域名
+ * 用朴素的 endsWith('amap.com') 是拦不住的。
+ */
+function isSafeAmapUrl(raw: string): boolean {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return false
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false
+
+  const host = url.hostname.toLowerCase()
+  return host === 'amap.com' || host.endsWith('.amap.com')
+}
+
 function parseFit(raw: unknown, where: string, problems: string[]): SkillFit[] {
   if (!Array.isArray(raw)) {
     problems.push(`${where} 缺少 fit 数组`)
@@ -95,7 +117,11 @@ export function parseSkillOutput(raw: unknown): Parsed {
     const name = text(item.name)
     const amapUrl = text(item.amap_url)
     if (!name) problems.push(`${where} 缺少 name`)
-    if (!amapUrl) problems.push(`${where} 缺少 amap_url`)
+    if (!amapUrl) {
+      problems.push(`${where} 缺少 amap_url`)
+    } else if (!isSafeAmapUrl(amapUrl)) {
+      problems.push(`${where} 的 amap_url 不是高德域名下的 http(s) 链接`)
+    }
 
     const fit = parseFit(item.fit, where, problems)
     if (!name || !amapUrl) return
