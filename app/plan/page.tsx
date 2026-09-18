@@ -10,6 +10,7 @@ import RouteSummaryBar from '@/components/RouteSummaryBar'
 import StopDetail from '@/components/StopDetail'
 import { usePlan } from '@/lib/client/plan-session'
 import { readRecommendStream } from '@/lib/client/recommend-stream'
+import { pickRouteMode } from '@/lib/core/route-mode'
 import { applyDiff } from '@/lib/recommend/apply-diff'
 import type { LatLng, RecommendPlace, Route } from '@/lib/core/model'
 
@@ -258,7 +259,13 @@ export default function PlanPage() {
       void fetch('/api/route/plan', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ origin: draft.point, stops, mode: 'driving' }),
+        // 路线方式跟着用户选的出行方式走 —— 之前这里写死 driving，
+        // 结果选了「步行」画的也是驾车路线
+        body: JSON.stringify({
+          origin: draft.point,
+          stops,
+          mode: pickRouteMode(draft.prefs.travelMode),
+        }),
         signal: controller.signal,
       })
         .then((res) => res.json())
