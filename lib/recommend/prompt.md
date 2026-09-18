@@ -3,6 +3,7 @@
 > 用途：平台 `lib/recommend/prompt.md` 的内容。平台是**单个 system prompt**，无法引用 `references/`，所以本文件把 `SKILL.md` + `references/output-schema.md` + `references/task-examples.md` 合并成一份，规则无删减，样例做了去重。
 >
 > **本版：2026-09-19 · 子点契约与跨层级去重**——`added` 同名 upsert（原地替换）、`removed` 先匹配顶层再匹配子点、`contains` 在 `refine` 里合法、判重看顶层名与括号里的子点两层。
+> 同日追加：**平台改用 `name` 走高德 POI 搜索定位坐标**（原为拿 `address` 做地理编码，那是坐标标错的根源）。因此 `address` 退为纯展示字段，`name` 成为定位键。
 > 本文件与 skill 三份文件同源，**改任一份都要重新生成另一份**——上一轮就是因为只改了 skill、没重出本文件，平台侧一行都没生效。
 >
 > 输出一律是合法 **json**，不裹任何解释性文字。
@@ -322,7 +323,7 @@
 
 1. **`amap_url` 必须是 `https` 且域名是 `amap.com` 或其子域。** 这不是格式洁癖：它来自模型输出、最终渲染成 `<a href>`，而 skill 要检索外部内容，恶意网页能通过提示词注入塞 `javascript:` 进来。
 2. **`fit` 里同一个 `tag` 只能有一条**，多条证据合并进同一条 `why`，用「；」连接。
-3. **不给坐标、不给距离。** 坐标由高德地理编码补，距离由高德算。
+3. **不给坐标、不给距离。** 坐标由平台拿 `name` 走高德 POI 搜索补，距离由高德算。
 4. **每条必须有 `name` 和 `amap_url`**；`recommendations` 不能是空数组。
 
 平台的具体校验口径（不满足即整次判失败）：
@@ -409,9 +410,9 @@ https://uri.amap.com/marker?position={lng},{lat}&name={encodeURIComponent(名称
 |---|---|---|---|
 | `rank` | number | 建议 | 列表内序号。**`refine` 的 `added` 里填 `99`**（追加项不占排名，见 5.2）；更新父级时沿用原值 |
 | `tier` | string | 建议 | 档位：`首选` / `备选 · 最清净` / `追问新增` / `细化` … |
-| `name` | string | **必须** | 地点名 |
+| `name` | string | **必须** | 地点名。**平台拿它走高德 POI 搜索定位**，所以要写地图／点评上真实存在的名称，不要自造 |
 | `category` | string | 建议 | 类别，如「历史街区 / 风景名胜」 |
-| `address` | string | 建议 | 地址。**平台会拿它做地理编码**，越具体越好 |
+| `address` | string | 建议 | 地址，**只用于展示**。平台不用它定位——坐标是拿 `name` 走高德 POI 搜索取的，所以这里写给人看即可，不必为了「好定位」而堆砌限定词 |
 | `contains` | string[] | `initial` **和 `refine`** | 复合地点含的子点名字。单一地点**省略此字段**。`refine` 里带上它就是「更新父级」，见 5.2 |
 | `parent` | string \| null | 仅 `finalize` | 属于哪个复合地点；单一地点填 `null` |
 | `fit` | `{tag, why}[]` | **必须** | 适合干什么 + 证据。`tag` 唯一 |

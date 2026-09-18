@@ -6,8 +6,8 @@ import { parseOpenStatus } from '@/lib/core/open-hours'
 import { amapGet } from '../amap-fetch'
 import type { Verification, VerifyInput, VerifyProvider } from './types'
 
-type GeocodeResponse = {
-  geocodes?: { location?: unknown; formatted_address?: unknown }[]
+type PoiSearchResponse = {
+  pois?: { location?: unknown; name?: unknown; biz_ext?: unknown }[]
 }
 
 function parseLocation(value: unknown): LatLng | null {
@@ -22,9 +22,15 @@ function parseLocation(value: unknown): LatLng | null {
   return { lng, lat }
 }
 
-/** 从地理编码响应映射成核实结果。纯函数，便于单测。 */
-export function mapGeocode(data: GeocodeResponse, origin: LatLng): Verification {
-  const first = data.geocodes?.[0]
+/**
+ * 从 POI 关键字搜索的响应里取第一条，映射成核实结果。纯函数，便于单测。
+ *
+ * 取第一条而不是挑最近的：高德的相关度排序实测稳定（连查三次逐位相同），
+ * 而「挑离出发点最近的」会把对的地点换掉 —— 真正的沙坡尾在思明区、离出发点
+ * 14.5 公里，集美大悦城却有个同名的「沙坡尾酒场」在一公里内。
+ */
+export function mapPoiSearch(data: PoiSearchResponse, origin: LatLng): Verification {
+  const first = data.pois?.[0]
   const point = parseLocation(first?.location)
 
   if (!point) return { point: null, verified: false }
@@ -32,16 +38,15 @@ export function mapGeocode(data: GeocodeResponse, origin: LatLng): Verification 
   return {
     point,
     verified: true,
-    verifiedName: asText(first?.formatted_address) || undefined,
+    // 高德返回的 POI 名称可能与 skill 给的写法不同
+    verifiedName: asText(first?.name) || undefined,
     // 直线距离，不是驾车距离。界面必须标明，否则会被当成里程
     distanceMeters: haversineMeters(origin, point),
   }
 }
 
-type AroundResponse = { pois?: { biz_ext?: unknown }[] }
-
-/** 从周边搜索响应里取营业状态。判不出来一律 unknown。 */
-export function mapPoiBusiness(data: AroundResponse, now: Date): OpenStatus {
+/** 从 POI 搜索结果里取营业状态。判不出来一律 unknown。 */
+export function mapPoiBusiness(data: PoiSearchResponse, now: Date): OpenStatus {
   const biz = data.pois?.[0]?.biz_ext
   if (!biz || typeof biz !== 'object' || Array.isArray(biz)) return 'unknown'
 
@@ -51,30 +56,32 @@ export function mapPoiBusiness(data: AroundResponse, now: Date): OpenStatus {
 }
 
 export const amapVerifyProvider: VerifyProvider = {
-  async verify({ name, address, city, origin }: VerifyInput): Promise<Verification> {
-    const geo = await amapGet<GeocodeResponse>('/v3/geocode/geo', {
-      address: address || [name, city].filter(Boolean).join(' '),
+  async verify({ name, city, origin }: VerifyInput): Promise<Verification> {
+    /*
+     * 用 POI 关键字搜索，不是地理编码。
+     *
+     * 地理编码回答的是「这个地址在哪」，而这里手上是一个 POI 名字。
+     * 拿名字去地理编码，高德会做字符串匹配而不是找 POI —— 实测把
+     * 「厦门老院子景区」放到了厦门北站的麦当劳、「厦门市图书馆集美新城馆区」
+     * 放到了一公里外的住宅楼。同一个名字走关键字搜索则 8/8 全部命中。
+     *
+     * 也**不要**改回「拿 name 拼一个更完整的 address 再地理编码」：实测名字
+     * 越完整越准（「海堤路（集美段）」能搜到集美区那条，「海堤路」反而
+     * 落到湖里区），所以问题出在用错了接口，不是查询词不够长。
+     */
+    const search = await amapGet<PoiSearchResponse>('/v3/place/text', {
+      keywords: name,
       city,
+      extensions: 'all',
     })
 
-    const result = mapGeocode(geo, origin)
+    const result = mapPoiSearch(search, origin)
     if (!result.verified || !result.point) return result
 
-    try {
-      const around = await amapGet<AroundResponse>('/v3/place/around', {
-        location: `${result.point.lng},${result.point.lat}`,
-        radius: 200,
-        offset: 1,
-        page: 1,
-        extensions: 'all',
-      })
-      return { ...result, openStatus: mapPoiBusiness(around, new Date()) }
-    } catch (error) {
-      // 营业状态只是锦上添花，拿不到不该让整条核实失败。
-      // 但必须留痕，不能静默吞错。
-      console.error(`[verify/amap] 取营业状态失败：${name}`, error)
-      return { ...result, openStatus: 'unknown' }
-    }
+    // biz_ext 就在同一条响应里，不必再打一次周边搜索；
+    // 而且取匹配到的这个 POI 自己的营业时间，比「坐标 200 米内最近那个 POI」
+    // 的营业时间更贴切。
+    return { ...result, openStatus: mapPoiBusiness(search, new Date()) }
   },
 
   async reverseGeocode(point) {

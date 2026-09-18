@@ -17,7 +17,8 @@ import type { RecommendRequest } from '@/lib/core/model'
 
 const SKILL_DIR =
   process.env.SKILL_DIR || '/Users/wuzebin/.workbuddy/skills/nearby-place-recommend'
-const SAMPLE_DIR = process.env.SKILL_SAMPLE_DIR || '/Users/wuzebin/Desktop/测试/nearby-place-recommend'
+const SAMPLE_DIR =
+  process.env.SKILL_SAMPLE_DIR || '/Users/wuzebin/Desktop/测试/skills/nearby-place-recommend'
 /** 平台实际加载的那份单文件提示词，默认取测试包里的草稿 */
 const PROMPT_FILE = process.env.PROMPT_FILE || join(SAMPLE_DIR, 'prompt-draft.md')
 
