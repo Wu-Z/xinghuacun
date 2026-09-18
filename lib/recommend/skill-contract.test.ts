@@ -275,27 +275,21 @@ describe('输入契约（buildUserMessage）', () => {
     expect(msg).toContain('追问范围：整批')
   })
 
-  it('refine 单点：带上类别与地址（防同名歧义）', () => {
+  it('refine 单点：带类别与地址，且同样下发当前列表', () => {
+    // 单点追问也下发 previous —— 这是调用方的真实形态（app/plan/page.tsx）。
+    // skill 靠它判断 added 是否重复了已有地点，包括复合地点括号里的子点。
     const msg = buildUserMessage(
       {
         ...base,
         task: 'refine',
         focus: { name: '集美大社', address: '厦门市集美区集美大社', category: '景点' },
-        previous: null,
+        previous,
         followup: '我想在这吃点东西',
       },
       PLACE,
     )
     expect(msg).toContain('追问范围：单个地点「集美大社」（景点，厦门市集美区集美大社）')
-
-    // 注意：调用方在单点追问时把 previous 置为 null（app/plan/page.tsx:132），
-    // 于是「当前列表」不会下发 —— skill 无从判断 added 是否重复了已有地点。
-    // 契约文档 case-03 里是有这一行的，两者目前不一致。
-    if (!msg.includes('当前列表')) {
-      console.log(
-        '\n⚠️ 单点追问的输入里没有「当前列表」，skill 无法对 added 去重（与 task-contract.md 的 case-03 示例不符）\n',
-      )
-    }
+    expect(msg).toContain('当前列表：')
   })
 
   it('finalize：追加选中的地点，含复合地点的子点', () => {

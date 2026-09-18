@@ -54,9 +54,15 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail, on
       <button onClick={() => onOpenDetail(place.name)} className="min-w-0 flex-1 text-left">
         <div className="flex items-baseline gap-2">
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{place.name}</span>
+          {/*
+            高亮判据用 tier 而不是 rank === 1。
+            rank 是顺序、tier 才是档位；而 parseSkillOutput 在 rank 缺失时
+            会按 i+1 补位 —— 于是「追问中途补进来的沙茶面」会被高亮成「首选」。
+            跟 tier 走则无论 rank 怎么写都不会错判。
+          */}
           <span
             className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${
-              place.rank === 1 ? 'bg-jade-wash text-jade' : 'bg-mist text-ink-soft'
+              place.tier.startsWith('首选') ? 'bg-jade-wash text-jade' : 'bg-mist text-ink-soft'
             }`}
           >
             {place.tier}
