@@ -156,7 +156,6 @@ describe('skill 文档与样例 ⇄ 平台解析器', () => {
       report.push(`${where} 跳过（${fragment ? '片段' : '非输出契约'}）`)
     }
 
-    // eslint-disable-next-line no-console
     console.log(`\n${report.join('\n')}\n`)
     expect(failures).toEqual([])
   })
