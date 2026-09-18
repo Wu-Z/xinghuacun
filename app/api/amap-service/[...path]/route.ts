@@ -6,6 +6,10 @@ const UPSTREAM = 'https://restapi.amap.com'
  *
  * 路径不能叫 _AMapService —— App Router 会把下划线开头的目录当 private folder，
  * 直接排除在路由之外，那样这个代理根本不会生成。
+ *
+ * 注意：这是一个路径不受限的转发口 —— 任何能访问本站的人都可以借它、用我们的
+ * jscode 去调高德。上游被钉死在 restapi.amap.com，所以不是任意 SSRF，
+ * 但它确实是个凭证放大器。上生产前应当按 JS API 实际用到的路径加白名单。
  */
 async function forward(req: Request, path: string[]): Promise<Response> {
   const code = process.env.AMAP_JS_SECURITY_CODE
