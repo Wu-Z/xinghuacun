@@ -53,8 +53,12 @@ Route Handlers 负责代理上游、归一化字段；客户端只认内部领�
 
 - JS API Key 的保护手段是**高德控制台的域名白名单**，不是隐藏。本地开发也要把
   `localhost` 加进白名单。
-- 安全密钥通过 `serviceHost` 指向本站代理路由 `/api/_AMapService/[...path]`，
+- 安全密钥通过 `serviceHost` 指向本站代理路由 `/api/amap-service/[...path]`，
   由服务端追加 `jscode` 参数。前端只拿到 `serviceHost` 这个路径，拿不到密钥本身。
+
+  > 路径**不能**叫 `_AMapService`：App Router 会把下划线开头的目录当成 private folder，
+  > 直接排除在路由之外，那样这个代理根本不会生成。`_AMapService` 只是高德 Nginx 示例里
+  > 的约定，SDK 并不校验它，`serviceHost` 就是一个我们自己定的基地址。
 - `.env.local` 进 `.gitignore`；仓库内只提交 `.env.example`，只写变量名不写值。
 
 ### 3.4 已知近似：「游玩项目」是规则推导的
@@ -75,7 +79,7 @@ app/
     poi/search/route.ts          周边召回
     poi/[id]/route.ts            单点详情
     route/plan/route.ts          路线规划
-    _AMapService/[...path]/route.ts   安全密钥代理
+    amap-service/[...path]/route.ts        安全密钥代理
 lib/
   providers/                     ← 换地图商只改这里
     poi/    { types.ts, amap.ts, mock.ts, index.ts }
@@ -194,13 +198,11 @@ PoiDetail
 留在服务端而不是客户端直接算，是为了给后续换 LLM / 真实内容源留位置：
 `deriveSource` 字段已经把这个意图表达出来了。
 
-### ANY /api/_AMapService/[...path]
+### ANY /api/amap-service/[...path]
 
 转发到 `https://restapi.amap.com/<path>`，追加 `jscode` 后返回。仅服务端持有安全密钥。
-
-### ANY /api/_AMapService/[...path]
-
-转发到 `https://restapi.amap.com/<path>`，追加 `jscode` 后返回。仅服务端持有安全密钥。
+浏览器端只把 `serviceHost` 设成 `${location.origin}/api/amap-service`，用页面自身
+origin 拼绝对地址，因此本地和线上都不需要额外配置。
 
 ## 7. 排序规则
 
