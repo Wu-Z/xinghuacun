@@ -156,8 +156,12 @@ export type RecommendRequest = {
   preferences: Preferences
   /** task=refine 且作用于单点时给 */
   focus?: { name: string; address: string; category: string } | null
-  /** task=refine 且作用于整批时给 */
-  previous?: { name: string; tier: string; category: string }[] | null
+  /**
+   * task=refine 时给，是当前列表。
+   * 必须带上 `contains` —— 否则 skill 看不见复合地点里的子点，
+   * 会把「集美大社」当成新地点重复推荐（实测踩过）。
+   */
+  previous?: { name: string; tier: string; category: string; contains?: string[] }[] | null
   /** task=refine 时用户追问的原话 */
   followup?: string | null
   /** task=finalize 时用户选中的那批（含 contains，供 skill 拆解） */

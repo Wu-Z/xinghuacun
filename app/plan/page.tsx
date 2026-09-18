@@ -177,8 +177,14 @@ export default function PlanPage() {
           focus: focusPlace
             ? { name: focusPlace.name, address: focusPlace.address, category: focusPlace.category }
             : null,
-          // 单点追问也要带上完整列表：skill 需要靠它判断新增的是否与已有重复
-          previous: places.map((p) => ({ name: p.name, tier: p.tier, category: p.category })),
+          // 单点追问也要带上完整列表，且要带 contains：
+          // skill 靠它判断新增的是否与已有重复，包括复合地点里的子点
+          previous: places.map((p) => ({
+            name: p.name,
+            tier: p.tier,
+            category: p.category,
+            contains: p.contains,
+          })),
           followup: text,
         })
 

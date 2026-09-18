@@ -58,7 +58,12 @@ export function buildUserMessage(
     )
     lines.push(`追问：${req.followup ?? ''}`)
     if (req.previous?.length) {
-      lines.push(`当前列表：${req.previous.map((p) => p.name).join('、')}`)
+      // 复合地点要把子点一起给出去。只给顶层名字的话，skill 看不见
+      // 「集美大社」藏在「集美学村」里，会把它当新地点重复推荐。
+      const listed = req.previous
+        .map((p) => (p.contains?.length ? `${p.name}（含 ${p.contains.join('、')}）` : p.name))
+        .join('、')
+      lines.push(`当前列表：${listed}`)
     }
   }
 
