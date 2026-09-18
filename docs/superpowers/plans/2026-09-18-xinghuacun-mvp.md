@@ -1232,9 +1232,6 @@ export const mockPoiProvider: PoiProvider = {
     return { label: '示例市中心区域', city: '示例市' }
   },
 }
-
-/** 供 API 层估算半径用，导出便于测试 */
-export { minutesToMeters }
 ```
 
 - [ ] **Step 6: 实现 mock Route provider**
@@ -1755,7 +1752,8 @@ import type { SearchRequest, SearchResponse } from '@/lib/core/model'
 import { rankPois } from '@/lib/core/rank'
 import { getPoiProvider } from '@/lib/providers/poi'
 
-export const MAX_CARDS = 6
+// 不能 export —— Next 会校验 route 文件的导出，多余的导出会导致构建失败
+const MAX_CARDS = 6
 
 export async function POST(req: Request) {
   let body: SearchRequest
