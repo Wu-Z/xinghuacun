@@ -19,7 +19,7 @@ export default function StopDetail({ place, onClose }: Props) {
   if (!place) return null
 
   return (
-    <div className="absolute inset-x-0 bottom-0 max-h-[78%] overflow-y-auto border-t border-line bg-paper shadow-[0_-8px_24px_-12px_rgba(18,23,28,0.25)]">
+    <div className="anim-rise absolute inset-x-0 bottom-0 max-h-[78%] overflow-y-auto border-t border-line bg-paper shadow-[0_-8px_24px_-12px_rgba(18,23,28,0.25)]">
       <div className="flex items-start gap-3 px-4 pb-1.5 pt-3">
         <h2 className="min-w-0 flex-1 text-sm font-semibold text-ink">{place.name}</h2>
         <button

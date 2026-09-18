@@ -455,6 +455,9 @@ export default function PlanPage() {
             </div>
           )}
 
+          {/* key={view} 让切换时重新挂载，从而触发一次淡入 ——
+              说明「这是同一个东西的另一种看法」，而不是跳转到了别处 */}
+          <div key={view} className="anim-fade">
           {view === 'timeline' && itinerary && (
             <TripTimeline
               itinerary={itinerary}
@@ -480,6 +483,7 @@ export default function PlanPage() {
               onAsk={(name) => setAskTarget({ name })}
             />
           )}
+          </div>
         </div>
 
         {/*
@@ -488,7 +492,7 @@ export default function PlanPage() {
           用户勾完地点不知道接下来该干嘛 —— 这是「难用」的主要来源之一。
         */}
         {view === 'list' && (canFinalize(places, selectedOrder) || selectedOrder.length >= 2) && (
-          <div className="shrink-0 space-y-2 border-t border-line bg-paper px-4 py-3">
+          <div className="anim-rise shrink-0 space-y-2 border-t border-line bg-paper px-4 py-3">
             {canFinalize(places, selectedOrder) && (
               <>
                 <button

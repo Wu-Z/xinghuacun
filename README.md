@@ -63,7 +63,7 @@ npm run dev
 npm test
 ```
 
-26 个文件 223 个用例。
+26 个文件 221 个用例。
 
 **纯逻辑**（`lib/core`、`lib/recommend`、`lib/providers`，跑在 node 环境）：
 坐标转换、DeepSeek 响应解析（含流式）、增量 JSON 提取、skill 输出结构校验、

@@ -19,7 +19,7 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail, on
 
   return (
     <div
-      className={`relative flex gap-3 py-3 pl-4 pr-3 transition-colors ${
+      className={`anim-fade relative flex gap-3 py-3 pl-4 pr-3 transition-colors ${
         selected ? 'bg-jade-wash' : selectable ? 'hover:bg-mist/60' : 'bg-[#fbfbfa]'
       }`}
     >

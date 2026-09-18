@@ -34,6 +34,42 @@ body {
   font-feature-settings: "tnum";
 }
 
+/*
+ * 动效只做「回应动作」的那几种，不做满屏入场。
+ * 下面两条都在说明「刚刚发生了什么」，而不是装饰：
+ *   fade —— 新内容到了（流式逐条到达的卡片、视图切换）
+ *   rise —— 你的操作解锁了下一步（勾满 2 个后浮出的「看行程」、
+ *           从底部打开的详情面板）
+ * prefers-reduced-motion 的全局降级在上面，会一并生效。
+ */
+@keyframes xhc-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes xhc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.anim-fade {
+  animation: xhc-fade 160ms ease-out;
+}
+
+.anim-rise {
+  animation: xhc-rise 200ms ease-out;
+}
+
 /* 键盘焦点必须看得见 */
 :focus-visible {
   outline: 2px solid var(--color-jade);
