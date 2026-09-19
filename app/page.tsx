@@ -8,6 +8,7 @@ import PreferencePills from '@/components/PreferencePills'
 import SparkleIcon from '@/components/SparkleIcon'
 import WeatherBar from '@/components/WeatherBar'
 import WeatherOverlay from '@/components/WeatherOverlay'
+import { withToken } from '@/lib/client/auth'
 import { setPlan, usePlan, type PlanDraft } from '@/lib/client/plan-session'
 import { useWeather } from '@/lib/client/weather'
 import { toGcj02 } from '@/lib/core/coordinate'
@@ -65,7 +66,7 @@ export default function Home() {
    */
   const namePlace = useCallback(async (point: LatLng) => {
     try {
-      const res = await fetch('/api/geocode/reverse', {
+      const res = await fetch(withToken('/api/geocode/reverse'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ point }),
@@ -197,7 +198,7 @@ export default function Home() {
       return
     }
     setPlan({ point, label: label || '已选位置', prefs })
-    router.push('/plan')
+    router.push(withToken('/plan'))
   }
 
   return (

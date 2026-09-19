@@ -13,6 +13,7 @@ import SparkleIcon from '@/components/SparkleIcon'
 import StopDetail from '@/components/StopDetail'
 import TripTimeline from '@/components/TripTimeline'
 import ViewSwitch from '@/components/ViewSwitch'
+import { withToken } from '@/lib/client/auth'
 import { patchShare, usePlan } from '@/lib/client/plan-session'
 import { readRecommendStream } from '@/lib/client/recommend-stream'
 import { useWeather } from '@/lib/client/weather'
@@ -198,7 +199,7 @@ export default function PlanPage() {
       let streamError: string | null = null
 
       try {
-        const res = await fetch('/api/recommend', {
+        const res = await fetch(withToken('/api/recommend'), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
@@ -306,7 +307,7 @@ export default function PlanPage() {
           followup: text,
         })
 
-        const res = await fetch('/api/recommend', {
+        const res = await fetch(withToken('/api/recommend'), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
@@ -383,7 +384,7 @@ export default function PlanPage() {
         .filter((p): p is RecommendPlace => Boolean(p?.point))
         .map((p) => ({ id: p.name, point: p.point as LatLng }))
 
-      void fetch('/api/route/plan', {
+      void fetch(withToken('/api/route/plan'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         // 路线方式跟着用户选的出行方式走 —— 之前这里写死 driving，
@@ -490,7 +491,7 @@ export default function PlanPage() {
             先告诉我从哪出发、想怎么玩。
           </p>
           <Link
-            href="/"
+            href={withToken('/')}
             className="mt-5 inline-flex h-10 items-center rounded-sm bg-jade px-4 text-[13px] font-medium text-white transition-colors hover:bg-jade-deep"
           >
             去首页填一下
@@ -527,7 +528,7 @@ export default function PlanPage() {
           {busy ? (
             <span className="text-[13.5px] font-semibold text-ink">周边去哪</span>
           ) : (
-            <Link href="/" className="text-[13.5px] font-semibold text-ink hover:text-jade">
+            <Link href={withToken('/')} className="text-[13.5px] font-semibold text-ink hover:text-jade">
               周边去哪
             </Link>
           )}

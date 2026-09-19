@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { withToken } from '@/lib/client/auth'
 import { toGcj02 } from '@/lib/core/coordinate'
 import type { LatLng, OriginSource } from '@/lib/core/model'
 import type { PlaceHit } from '@/lib/providers/place-search'
@@ -83,7 +84,7 @@ export default function MapPicker({ target, near, origin, initial, onConfirm, on
     }
 
     try {
-      const res = await fetch(`/api/place/search?${params.toString()}`)
+      const res = await fetch(withToken(`/api/place/search?${params.toString()}`))
       const data = (await res.json()) as { hits?: PlaceHit[]; reason?: string }
       if (id !== reqRef.current) return
       if (!res.ok) {

@@ -632,3 +632,58 @@ describe('结果页 · 列表与地图同源', () => {
     expect(await screen.findByRole('heading', { name: '海堤路' })).toBeTruthy()
   })
 })
+
+describe('结果页 · 带令牌', () => {
+  // 令牌走 URL 而不是 cookie，代价就是每个请求都得自己带上。
+  // 漏一个的表现是那条接口 401，而界面只看出「天气没了」「路线出不来」——
+  // 看不出是门的错。所以在这儿一次钉死，别让下一个加接口的人踩。
+  afterEach(() => {
+    window.history.replaceState({}, '', '/')
+  })
+
+  it('这一页发出的每一个请求都带着令牌', async () => {
+    window.history.replaceState({}, '', '/plan?token=testtok')
+
+    nextResponses = [streamOf([COMPOSITE, PLAIN])]
+    render(<PlanPage />)
+    await waitForCards(2)
+
+    await clickButton(/选择 集美学村/)
+    await clickButton(/选择 海堤路/)
+    await clickButton(/看行程/)
+    await waitFor(() => expect(screen.getByText(/路上共/)).toBeTruthy(), { timeout: 3000 })
+
+    const calls = (globalThis.fetch as unknown as { mock: { calls: [string][] } }).mock.calls
+    const urls = calls.map((c) => String(c[0]))
+    expect(urls.length).toBeGreaterThan(0)
+    for (const u of urls) {
+      expect(u, `这个请求没带令牌：${u}`).toContain('token=testtok')
+    }
+  })
+
+  it('回首页的链接也带着令牌 —— 否则一点就撞 401，看上去像首页坏了', async () => {
+    window.history.replaceState({}, '', '/plan?token=testtok')
+
+    nextResponses = [streamOf([COMPOSITE])]
+    render(<PlanPage />)
+    await waitForCards(1)
+
+    const home = screen.getAllByRole('link', { name: '周边去哪' })
+    expect(home.length).toBeGreaterThan(0)
+    for (const a of home) {
+      expect(a.getAttribute('href'), '回首页的链接没带令牌').toContain('token=testtok')
+    }
+  })
+
+  it('没有草稿时的「去首页填一下」同样带令牌', async () => {
+    // 这条是另一条渲染路径：进到这个分支说明草稿是空的，
+    // 用户唯一的出口就是那个链接，它不带令牌等于把人关在门外
+    window.history.replaceState({}, '', '/plan?token=testtok')
+    planRef.current = null
+
+    render(<PlanPage />)
+
+    const link = await screen.findByRole('link', { name: '去首页填一下' })
+    expect(link.getAttribute('href')).toContain('token=testtok')
+  })
+})

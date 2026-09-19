@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { Weather } from '@/lib/core/weather'
 import type { LatLng } from '@/lib/core/model'
+import { withToken } from './auth'
 
 /**
  * 拉当前所在城市（出发点的城市）的天气。
@@ -24,7 +25,7 @@ export function useWeather(point: LatLng | null): Weather | null {
     let alive = true
     const controller = new AbortController()
 
-    void fetch('/api/weather', {
+    void fetch(withToken('/api/weather'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ point }),
