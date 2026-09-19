@@ -1,6 +1,10 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  // 左下角那个圆形开发角标。它正好压在首页内容的左下方，看着像页面自己的按钮，关掉。
+  // 编译错误与运行时错误照样会浮出来，只是不显示平时那个常驻角标。
+  devIndicators: false,
+
   async rewrites() {
     return [
       {

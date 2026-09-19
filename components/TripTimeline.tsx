@@ -1,6 +1,6 @@
 'use client'
 
-import { MODE_LABEL, formatDistance, formatDuration } from '@/lib/core/format'
+import { MODE_LABEL, formatDistance, formatDuration, summarizeModes } from '@/lib/core/format'
 import type { Itinerary } from '@/lib/core/itinerary'
 import type { RecommendPlace } from '@/lib/core/model'
 
@@ -16,6 +16,13 @@ type Props = {
 
 const DOT = 'mt-[7px] h-2.5 w-2.5 shrink-0 rounded-full'
 
+/** 站点在这条动线里的身份。只给听得懂的说法，不排时刻表 */
+const KIND_LABEL: Record<string, (i: number) => string> = {
+  start: () => '起点',
+  stop: (i) => `第 ${i} 站`,
+  end: () => '终点',
+}
+
 export default function TripTimeline({
   itinerary,
   places,
@@ -24,13 +31,14 @@ export default function TripTimeline({
   onClearEnd,
   onOpenDetail,
 }: Props) {
-  const modeLabel = MODE_LABEL[itinerary.mode]
+  const modeLabel = summarizeModes(itinerary.legs)
 
   return (
     <div className="px-4 py-3">
       {itinerary.hasDegradedLeg && (
-        <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-[11.5px] leading-relaxed text-amber-800">
-          有路段没规划出来，下面的时长与距离按直线估算，实际会更长。
+        <div className="mb-3 border-b border-amber-line bg-amber-bg px-3 py-2 text-[12.5px] leading-[1.65] text-amber">
+          有路段没规划出来，下面标了「直线估算」的那几段按直线算，实际会更长。
+          取消再勾一次通常能算出来。
         </div>
       )}
 
@@ -48,10 +56,13 @@ export default function TripTimeline({
                   <div className="flex w-2.5 shrink-0 justify-center">
                     <span className="w-px bg-line" />
                   </div>
-                  <div className="min-w-0 flex-1 py-1.5 text-[11.5px] leading-relaxed text-ink-soft">
-                    {modeLabel} {formatDuration(leg.durationSeconds)} ·{' '}
+                  {/* 每段单独一行给「方式 + 时长 + 里程」，
+                      而不是把所有段的数字堆在底部 —— 那样看不出哪段是哪种走法。
+                      方式取的是**这一段自己的**：一条路线可以近的走路、远的坐地铁 */}
+                  <div className="min-w-0 flex-1 py-1.5 text-xs leading-[1.6] text-ink-3">
+                    {MODE_LABEL[leg.mode]} {formatDuration(leg.durationSeconds)} ·{' '}
                     {formatDistance(leg.distanceMeters)}
-                    {leg.degraded && <span className="ml-1.5 text-amber-700">（直线估算）</span>}
+                    {leg.degraded && <span className="ml-1.5 font-medium text-amber">（直线估算）</span>}
                   </div>
                 </div>
               )}
@@ -60,7 +71,7 @@ export default function TripTimeline({
                 <div className="flex w-2.5 shrink-0 justify-center">
                   <span
                     className={`${DOT} ${
-                      stop.kind === 'stop' ? 'bg-jade' : 'border border-ink-soft bg-paper'
+                      stop.kind === 'stop' ? 'bg-jade' : 'border border-ink-3 bg-surface'
                     }`}
                   />
                 </div>
@@ -78,18 +89,16 @@ export default function TripTimeline({
                         {stop.name}
                       </span>
                     )}
-                    <span className="shrink-0 text-[11px] text-ink-soft">
-                      {stop.kind === 'start' ? '起点' : stop.kind === 'end' ? '终点' : ''}
-                    </span>
+                    <span className="shrink-0 text-xs text-ink-3">{KIND_LABEL[stop.kind](i)}</span>
                   </div>
                   {place && (
-                    <div className="mt-0.5 truncate text-[11.5px] text-ink-soft">
+                    <div className="mt-0.5 truncate text-xs text-ink-3">
                       {place.tier}
                       {place.category ? ` · ${place.category}` : ''}
                     </div>
                   )}
                   {isLast && !hasEnd && (
-                    <div className="mt-1 text-[11.5px] text-ink-soft">到这里就结束了</div>
+                    <div className="mt-1 text-xs text-ink-3">到这里就结束了</div>
                   )}
                 </div>
               </div>
@@ -100,26 +109,36 @@ export default function TripTimeline({
 
       <div className="mt-3 border-t border-line pt-3">
         {hasEnd ? (
-          <div className="flex items-center gap-2 text-xs text-ink-soft">
-            <span>终点：{itinerary.stops[itinerary.stops.length - 1].name}</span>
-            <button onClick={onSetEnd} className="text-jade hover:underline">
-              改
+          <div className="flex items-center gap-3 text-[13px] text-ink-2">
+            <span className="min-w-0 truncate">
+              终点：{itinerary.stops[itinerary.stops.length - 1].name}
+            </span>
+            <button
+              onClick={onSetEnd}
+              className="ml-auto shrink-0 text-jade hover:underline"
+            >
+              改终点
             </button>
-            <button onClick={onClearEnd} className="hover:text-ink">
+            <button onClick={onClearEnd} className="shrink-0 text-ink-3 hover:text-ink">
               取消终点
             </button>
           </div>
         ) : (
-          <button onClick={onSetEnd} className="text-xs text-jade hover:underline">
+          <button onClick={onSetEnd} className="text-[13px] text-jade hover:underline">
             设置终点（比如回家）
           </button>
         )}
       </div>
 
-      <div className="mt-3 flex items-center gap-3 border-t border-line pt-3 text-xs font-medium">
-        <span className="text-ink-soft">路上共</span>
-        <span className="tnum text-jade">{formatDuration(itinerary.totalTravelMinutes * 60)}</span>
-        <span className="tnum text-jade">{formatDistance(itinerary.totalDistanceMeters)}</span>
+      <div className="mt-3 flex items-baseline gap-3 border-t border-line pt-3">
+        <span className="text-xs text-ink-3">路上共</span>
+        <span className="tnum text-[15px] font-semibold text-jade-deep">
+          {formatDuration(itinerary.totalTravelMinutes * 60)}
+        </span>
+        <span className="text-xs text-ink-3">{modeLabel}</span>
+        <span className="tnum text-[15px] font-semibold text-jade-deep">
+          {formatDistance(itinerary.totalDistanceMeters)}
+        </span>
       </div>
     </div>
   )

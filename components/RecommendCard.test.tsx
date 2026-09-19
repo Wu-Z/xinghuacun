@@ -38,12 +38,12 @@ const tierSpan = (text: string) => screen.getByText(text)
 describe('RecommendCard · 档位高亮', () => {
   it('「首选」高亮', () => {
     renderCard(place({ rank: 1, tier: '首选' }))
-    expect(tierSpan('首选').className).toContain('bg-jade-wash')
+    expect(tierSpan('首选').className).toContain('bg-jade-50')
   })
 
   it('「备选」不高亮', () => {
     renderCard(place({ rank: 2, tier: '备选 · 最清净' }))
-    expect(tierSpan('备选 · 最清净').className).not.toContain('bg-jade-wash')
+    expect(tierSpan('备选 · 最清净').className).not.toContain('bg-jade-50')
   })
 
   it('rank 为 1 但档位不是首选时也不高亮', () => {
@@ -51,12 +51,12 @@ describe('RecommendCard · 档位高亮', () => {
     // 会按 i+1 补位 —— 于是「追问中途补进来的沙茶面」会被高亮成「首选」。
     // 判据改成跟 tier 走之后，rank 写什么都不影响。
     renderCard(place({ rank: 1, tier: '追问新增' }))
-    expect(tierSpan('追问新增').className).not.toContain('bg-jade-wash')
+    expect(tierSpan('追问新增').className).not.toContain('bg-jade-50')
   })
 
   it('rank 不是 1 但档位是首选时照样高亮', () => {
     renderCard(place({ rank: 99, tier: '首选' }))
-    expect(tierSpan('首选').className).toContain('bg-jade-wash')
+    expect(tierSpan('首选').className).toContain('bg-jade-50')
   })
 })
 
@@ -86,6 +86,22 @@ describe('RecommendCard · 未核实', () => {
   it('已核实的可以勾选', () => {
     renderCard(place({ name: '正常' }))
     expect(isDisabled('选择 正常')).toBe(false)
+  })
+
+  it('用斜纹底 + 虚线圈 + 文字三重表达，不单靠颜色', () => {
+    // 琥珀和红分不清、灰度打印、色觉障碍 —— 三种情况都得读得出来，
+    // 所以同一个意思要落在三种不同的视觉信号上
+    const { container } = renderCard(place({ name: '查不到', verified: false, point: null }))
+    expect(container.querySelector('.stripe-locked')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: /未能核实，无法加入路线/ }) as HTMLElement).className,
+    ).toContain('border-dashed')
+    expect(screen.getByText(/高德未能核实到该地点/).className).toContain('text-amber')
+  })
+
+  it('已核实的卡片没有斜纹底', () => {
+    const { container } = renderCard(place({ name: '正常' }))
+    expect(container.querySelector('.stripe-locked')).toBeNull()
   })
 })
 

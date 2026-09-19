@@ -71,3 +71,54 @@ describe('amapGet', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('amapGet · 并发闸门', () => {
+  let inFlight = 0
+  let peak = 0
+
+  /** 每个请求停 5ms —— 不停的话它们根本不重叠，测不出并发 */
+  function stallingFetch() {
+    return async () => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight -= 1
+      return new Response(JSON.stringify({ status: '1', pois: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+  }
+
+  beforeEach(() => {
+    inFlight = 0
+    peak = 0
+    process.env.AMAP_MAX_CONCURRENCY = '3'
+    vi.stubGlobal('fetch', vi.fn(stallingFetch()))
+  })
+
+  it('同时最多只放行配置的条数', async () => {
+    // 一次推荐会连着核实十几个地点。不限并发就是一串请求同时打过去、
+    // 一起撞上高德的每秒限流、一起退避、再一起撞 —— 退避救不了这个节奏
+    await Promise.all(Array.from({ length: 10 }, () => amapGet('/v3/place/text', {})))
+
+    // 断言等于 3 而不是 ≤3：小于 3 说明这个测试压根没让请求重叠上，是假通过
+    expect(peak).toBe(3)
+  })
+
+  it('配成 0、负数或非数字时回到默认值，不能把闸门焊死', async () => {
+    // 闸门一旦是 0 就永远不放行，整个核实层会静默卡死 —— 比限流更难查
+    for (const bad of ['0', '-1', 'abc', '']) {
+      process.env.AMAP_MAX_CONCURRENCY = bad
+      peak = 0
+      await Promise.all(Array.from({ length: 6 }, () => amapGet('/v3/place/text', {})))
+      expect(peak).toBe(3)
+    }
+  })
+
+  it('配大了就按配的放行', async () => {
+    process.env.AMAP_MAX_CONCURRENCY = '6'
+    await Promise.all(Array.from({ length: 6 }, () => amapGet('/v3/place/text', {})))
+    expect(peak).toBe(6)
+  })
+})

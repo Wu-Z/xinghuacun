@@ -1,15 +1,56 @@
 @import "tailwindcss";
 
 @theme {
-  /* 单一强调色，其余全中性。见设计文档 13.3 */
-  --color-ink: #12171c;
-  --color-ink-soft: #5a656e;
-  --color-paper: #ffffff;
-  --color-mist: #f2f4f5;
-  --color-line: #e3e7e9;
+  /*
+   * 底色是暖白，不是纯白。
+   * 这是个长时间对着地图看的界面，纯白与地图的明度反差会造成持续眩光；
+   * 暖白顺带让「卡片 / 页面底」多出一层层次，不用再加边框去分。
+   */
+  --color-paper: #fbfaf8; /* 页面底 · 列表底 */
+  --color-surface: #ffffff; /* 卡片 · 面板 · 输入框 */
+  --color-mist: #f3f1ed; /* 分组头 · 次级填充 */
+  --color-mist-2: #eae7e1; /* 禁用底 · 骨架 */
+  --color-line: #e4e1da;
+  --color-line-2: #d2cec5;
+
+  /*
+   * 三级文字，对比度逐级实测过（在 paper / surface / mist 三种底上分别取值）：
+   * ink 17.1:1 · ink-2 9.3:1 · ink-3 5.5:1
+   */
+  --color-ink: #14181a;
+  --color-ink-2: #3c464a;
+  --color-ink-3: #5f686e;
+
+  /* 单一强调色，其余全中性 */
   --color-jade: #0f6e6e;
   --color-jade-deep: #0b5252;
-  --color-jade-wash: #e6f0f0;
+  --color-jade-50: #e8f0ef;
+  --color-jade-100: #c6dedc;
+
+  /*
+   * 琥珀 = 数据不确定（未核实 / 直线估算 / 生成中断）
+   * 红   = 操作失败，需要用户处理
+   * 两者不混用 —— 全染成琥珀，用户分不清该重试还是该接受。
+   */
+  --color-amber: #8a5a0b;
+  --color-amber-bg: #fdf5e6;
+  --color-amber-line: #efddb2;
+  --color-red: #a5382f;
+  --color-red-bg: #fcefee;
+  --color-red-line: #f2d3d0;
+
+  /* 圆角：6 徽章 / 8 按钮输入 / 12 卡片 / 16 面板 / 22 输入框与抽屉 */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  /* 阴影四级，全部带暖色，不用纯黑 */
+  --shadow-1: 0 1px 2px rgba(24, 20, 12, 0.05);
+  --shadow-2: 0 2px 6px rgba(24, 20, 12, 0.06), 0 1px 2px rgba(24, 20, 12, 0.04);
+  --shadow-3: 0 8px 24px -8px rgba(24, 20, 12, 0.16), 0 2px 6px rgba(24, 20, 12, 0.05);
+  --shadow-4: 0 -12px 40px -16px rgba(24, 20, 12, 0.22);
 
   /* 中文走系统栈：CJK 网络字体动辄数 MB，这是取舍不是偷懒 */
   --font-sans:
@@ -35,12 +76,27 @@ body {
 }
 
 /*
+ * 未核实的地点：斜纹底。
+ * 状态不能只靠颜色讲 —— 斜纹底 + 虚线圈 + 琥珀说明，三重表达同一件事，
+ * 色觉障碍、灰度打印、以及「琥珀和红分不清」的人都还读得出来。
+ */
+.stripe-locked {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #fcfbf9,
+    #fcfbf9 6px,
+    #f8f7f4 6px,
+    #f8f7f4 12px
+  );
+}
+
+/*
  * 动效只做「回应动作」的那几种，不做满屏入场。
- * 下面两条都在说明「刚刚发生了什么」，而不是装饰：
+ * 下面几条都在说明「刚刚发生了什么」，而不是装饰：
  *   fade —— 新内容到了（流式逐条到达的卡片、视图切换）
- *   rise —— 你的操作解锁了下一步（勾满 2 个后浮出的「看行程」、
- *           从底部打开的详情面板）
- * prefers-reduced-motion 的全局降级在上面，会一并生效。
+ *   rise —— 你的操作解锁了下一步（浮出的底部托盘、从底部打开的详情面板）
+ *   sparkle —— 模型在干活（等待二十秒期间界面一动不动会被当成卡死）
+ *   pulse —— 卡片还没到，先占好位子（骨架）
  */
 @keyframes xhc-fade {
   from {
@@ -62,19 +118,6 @@ body {
   }
 }
 
-.anim-fade {
-  animation: xhc-fade 160ms ease-out;
-}
-
-.anim-rise {
-  animation: xhc-rise 200ms ease-out;
-}
-
-/*
- * 等待模型返回时的星芒脉动。
- * 它替代了原来那句静止不动的「正在检索与思考…」—— 二十秒里界面一动不动，
- * 用户会以为卡死了。动起来才说明「它在干活」。
- */
 @keyframes xhc-sparkle {
   0%,
   100% {
@@ -87,14 +130,46 @@ body {
   }
 }
 
+@keyframes xhc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.anim-fade {
+  animation: xhc-fade 160ms ease-out;
+}
+
+.anim-rise {
+  animation: xhc-rise 200ms ease-out;
+}
+
 .anim-sparkle {
   animation: xhc-sparkle 1.4s ease-in-out infinite;
 }
 
-/* 键盘焦点必须看得见 */
-:focus-visible {
-  outline: 2px solid var(--color-jade);
-  outline-offset: 2px;
+.anim-pulse {
+  animation: xhc-pulse 1.6s ease-in-out infinite;
+}
+
+/*
+ * 键盘焦点必须看得见。
+ *
+ * 放进 base 层是关键：不进层的话它会排在 @import "tailwindcss" 之后，
+ * 凭源码顺序压过 utilities —— 于是卡片式输入区里那个写了 `outline-none` 的
+ * textarea 照样被套上一个 2px 的**方角**外框，而外面那张卡是 22px 圆角，
+ * 两条框错位叠在一起。进了 base，utilities 正常生效，
+ * 需要自己画焦点态的地方（卡片用 focus-within 兜住）才管得住。
+ */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-jade);
+    outline-offset: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -107,11 +182,12 @@ body {
 
   /*
    * 上面那条 duration 只能压住「跑一次」的动画。
-   * `.anim-sparkle` 是 infinite 的：0.01ms 一轮意味着每帧跑完上千轮，
+   * 星芒与骨架都是 infinite 的：0.01ms 一轮意味着每帧跑完上千轮，
    * 停在哪个相位全看运气 —— 结果不是静止，而是每帧闪一次，比原来更糟。
-   * 直接停掉，让它停在完整不透明的那一帧。
+   * 直接停掉，让它们各自停在完整不透明的那一帧。
    */
-  .anim-sparkle {
+  .anim-sparkle,
+  .anim-pulse {
     animation: none !important;
   }
 }

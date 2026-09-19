@@ -41,12 +41,14 @@ export default function MapCanvas({
   // 初始化地图，只做一次
   useEffect(() => {
     let cancelled = false
+    let observer: ResizeObserver | null = null
 
     loadAmap()
       .then((AMap) => {
-        if (cancelled || !containerRef.current || mapRef.current) return
+        const container = containerRef.current
+        if (cancelled || !container || mapRef.current) return
 
-        const map = new AMap.Map(containerRef.current, {
+        const map = new AMap.Map(container, {
           zoom: 12,
           // 用户选点之前地图显示哪片区域。原先硬编码成北京是随意的；
           // 演示数据在厦门集美，所以这里指向那里。
@@ -57,11 +59,23 @@ export default function MapCanvas({
           pickRef.current({ lng: e.lnglat.getLng(), lat: e.lnglat.getLat() })
         })
         mapRef.current = map
+
+        /*
+         * 容器尺寸一变就让高德重算画布大小。
+         *
+         * 它自己只挂 window 的 resize，而窗口从半屏拉到全屏时，
+         * 容器已经变宽、画布还停在旧尺寸 —— 画布被 CSS 拉伸就糊成一团，
+         * 没被拉伸就在右侧留一条白。两种症状都是这一件事。
+         * ResizeObserver 看的是容器本身，断点切换、布局回流都能覆盖。
+         */
+        observer = new ResizeObserver(() => map.resize?.())
+        observer.observe(container)
       })
       .catch((e: Error) => setError(e.message))
 
     return () => {
       cancelled = true
+      observer?.disconnect()
       mapRef.current?.destroy?.()
       mapRef.current = null
     }
@@ -106,13 +120,13 @@ export default function MapCanvas({
       <div ref={containerRef} className={`h-full w-full ${picking ? 'cursor-crosshair' : ''}`} />
 
       {picking && (
-        <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-md bg-jade px-4 py-2 text-sm font-medium text-white shadow-lg">
+        <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-sm bg-jade px-4 py-2 text-sm font-medium text-white shadow-3">
           在地图上点一下，作为出发点
         </div>
       )}
 
       {error && (
-        <div className="absolute inset-x-4 bottom-4 rounded-md bg-paper px-3 py-2 text-sm text-red-700 shadow-lg ring-1 ring-line">
+        <div className="absolute inset-x-4 bottom-4 rounded-sm border border-red-line bg-surface px-3 py-2 text-[13px] text-red shadow-3">
           地图加载失败：{error}
         </div>
       )}

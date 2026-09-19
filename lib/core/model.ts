@@ -17,6 +17,14 @@ export type OpenStatus = 'open' | 'closed' | 'unknown'
 export type RouteLeg = {
   fromIndex: number
   toIndex: number
+  /**
+   * 这一段实际用的出行方式（降级的那段记的是「本来想用的」）。
+   *
+   * 存在段上而不是整条路线上：高德没有跨方式的路径规划接口，
+   * 「两个地方太近就别坐地铁」只能逐段定。一条路线因此可以混用 ——
+   * 界面要按段显示，不能拿整条的方式去说每一段。
+   */
+  mode: TravelMode
   durationSeconds: number
   distanceMeters: number
   polyline: LatLng[]
@@ -28,7 +36,6 @@ export type RouteLeg = {
 }
 
 export type Route = {
-  mode: TravelMode
   order: string[]
   legs: RouteLeg[]
   totalDurationSeconds: number
@@ -39,7 +46,12 @@ export type Route = {
 export type PlanRequest = {
   origin: LatLng
   stops: { id: string; point: LatLng }[]
-  mode: TravelMode
+  /**
+   * 用户明确选过的出行方式。**不传**表示没选过 ——
+   * 由服务端逐段按距离定（见 lib/core/route-mode 的 legModeCandidates），
+   * 而不是在这里替用户默认成驾车。
+   */
+  mode?: TravelMode
   /**
    * 终点。给了就作为最后一段的目的地（不参与顺序优化，固定收尾）。
    * 不给则默认回到 origin。用户回家还是去别处，由它表达。

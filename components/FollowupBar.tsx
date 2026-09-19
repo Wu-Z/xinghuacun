@@ -13,6 +13,10 @@ type Props = {
 const HINTS_BATCH = ['增加点能观光的地方', '换几个不那么挤的', '别去那么远']
 const HINTS_ONE = ['我想在这吃点东西', '这里适合带小孩吗', '附近还有别的可去的吗']
 
+/**
+ * 追问面板内联在列表上方，不弹窗：
+ * 用户要能一边看着现有结果一边提问，弹窗会把参照物挡住。
+ */
 export default function FollowupBar({ focusName, busy, onSubmit, onCancel }: Props) {
   const [text, setText] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -31,17 +35,20 @@ export default function FollowupBar({ focusName, busy, onSubmit, onCancel }: Pro
   }
 
   return (
-    <div className="border-b border-line bg-jade-wash/60 px-4 py-3">
-      <div className="mb-2 flex items-baseline gap-2">
-        <span className="text-xs font-medium text-jade">
+    <div className="shrink-0 border-b border-jade-100 bg-jade-50 px-4 py-3">
+      <div className="flex items-baseline gap-2">
+        <span className="text-[13px] font-medium text-jade-deep">
           {focusName ? `追问「${focusName}」` : '对这批结果不满意？'}
         </span>
-        <button onClick={onCancel} className="ml-auto text-[11px] text-ink-soft hover:text-ink">
+        <button
+          onClick={onCancel}
+          className="ml-auto text-xs text-ink-2 transition-colors hover:text-ink"
+        >
           取消
         </button>
       </div>
 
-      <div className="flex gap-2">
+      <div className="mt-2 flex gap-2">
         <input
           ref={inputRef}
           value={text}
@@ -49,12 +56,12 @@ export default function FollowupBar({ focusName, busy, onSubmit, onCancel }: Pro
           onKeyDown={(e) => e.key === 'Enter' && submit()}
           disabled={busy}
           placeholder={focusName ? '例如：我想在这吃点东西' : '例如：我想增加点中间可以观光的地方'}
-          className="min-w-0 flex-1 rounded-md border border-line px-3 py-2 text-sm outline-none placeholder:text-ink-soft/70 focus:border-jade disabled:opacity-60"
+          className="h-10 min-w-0 flex-1 rounded-sm border border-jade-100 bg-surface px-3 text-sm outline-none placeholder:text-ink-3 disabled:text-ink-3 focus:border-jade focus:ring-[3px] focus:ring-jade-50"
         />
         <button
           onClick={submit}
           disabled={busy || !text.trim()}
-          className="shrink-0 rounded-md bg-jade px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-10 shrink-0 rounded-sm bg-jade px-4 text-sm font-medium text-white transition-colors hover:bg-jade-deep disabled:cursor-not-allowed disabled:bg-mist-2 disabled:text-ink-3"
         >
           {busy ? '思考中…' : '发送'}
         </button>
@@ -66,7 +73,7 @@ export default function FollowupBar({ focusName, busy, onSubmit, onCancel }: Pro
             key={h}
             onClick={() => setText(h)}
             disabled={busy}
-            className="rounded-md bg-paper px-2 py-1 text-[11px] text-ink-soft hover:text-jade disabled:opacity-50"
+            className="rounded-xs bg-surface px-2 py-1 text-xs text-ink-3 transition-colors hover:text-jade disabled:text-ink-3/60"
           >
             {h}
           </button>

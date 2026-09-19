@@ -43,6 +43,12 @@ function renderList(over: Partial<Props> = {}) {
 // 细化按钮本身已挪到结果页的固定底栏，那部分的显示条件由
 // app/plan/page.test.tsx 覆盖；这里只管列表自己的内容。
 
+/**
+ * 说明条里的数字是加粗的（`<b>`），按单个文本节点匹配会漏掉它们 ——
+ * 整段读一遍，去掉空白再断言。
+ */
+const allText = () => document.body.textContent?.replace(/\s+/g, '') ?? ''
+
 describe('RecommendList · 细化后的说明文案', () => {
   it('数字取的是「用户当初选了几个」，不是继承后的数量', () => {
     // 实测踩到的坑：selectedCount 是继承后重算的，拿它当「用户选了几个」
@@ -51,8 +57,8 @@ describe('RecommendList · 细化后的说明文案', () => {
       places: [place('龙舟池', { parent: '集美学村' })],
       finalizeNote: { before: 3, selected: 2, after: 4 }, // 用户当初只选了 2 个
     })
-    expect(screen.getByText(/已把选中的 2 个细化为 4 个站点/)).toBeTruthy()
-    expect(screen.queryByText(/选中的 4 个细化/)).toBeNull()
+    expect(allText()).toContain('已把选中的2个细化为4个站点')
+    expect(allText()).not.toContain('已把选中的4个')
   })
 
   it('有未选中的地点时，明确说它们被移除了', () => {
@@ -60,7 +66,7 @@ describe('RecommendList · 细化后的说明文案', () => {
       places: [place('龙舟池', { parent: '集美学村' })],
       finalizeNote: { before: 5, selected: 2, after: 3 },
     })
-    expect(screen.getByText(/其余 3 个未选的地点已移除/)).toBeTruthy()
+    expect(allText()).toContain('没选的3个已从列表移除')
   })
 
   it('列表里所有地点都被选中时，不提「移除」', () => {
@@ -68,7 +74,7 @@ describe('RecommendList · 细化后的说明文案', () => {
       places: [place('龙舟池', { parent: '集美学村' })],
       finalizeNote: { before: 2, selected: 2, after: 3 },
     })
-    expect(screen.queryByText(/未选的地点已移除/)).toBeNull()
+    expect(allText()).not.toContain('已从列表移除')
   })
 
   it('没细化过时不显示这段说明', () => {
@@ -89,7 +95,7 @@ describe('RecommendList · 分组', () => {
     })
     expect(screen.getByText(/集美学村/)).toBeTruthy()
     // 只有 2 个带 parent（园博园是 parent: null，独立列出）
-    expect(screen.getByText(/↓\s*2\s*个站点/)).toBeTruthy()
+    expect(screen.getByText(/·\s*2\s*个站点（由 1 个复合地点拆出）/)).toBeTruthy()
   })
 
   it('单点追问新增的项，挂在锚点那条下面', () => {
@@ -97,6 +103,17 @@ describe('RecommendList · 分组', () => {
       places: [place('集美大社'), place('园博园'), place('味友鸭肉面线', { askedFrom: '园博园' })],
     })
     expect(screen.getByText('「园博园」的追问新增')).toBeTruthy()
+  })
+
+  it('追问新增项被 skill 误标了 parent 时，仍然挂在锚点下', () => {
+    // refine 里出现 parent 是 skill 违约（那是 finalize 的字段）。
+    // 真让它生效，这条「追问新增」会掉进「集美学村 · N 个站点（由 1 个复合地点拆出）」
+    // 的分组里 —— 而那句话是假的：根本没有发生过拆解。
+    renderList({
+      places: [place('集美学村'), place('沙茶面', { askedFrom: '集美学村', parent: '集美学村' })],
+    })
+    expect(screen.getByText('「集美学村」的追问新增')).toBeTruthy()
+    expect(screen.queryByText(/由 1 个复合地点拆出/)).toBeNull()
   })
 
   it('锚点已不在列表里时，这些项退回平铺，不悬挂', () => {

@@ -7,13 +7,14 @@ type Props = {
   onToggle: (value: string) => void
 }
 
-const CHIP = 'rounded-md px-3 py-1.5 text-sm transition-colors'
-const IDLE = 'bg-mist text-ink-soft hover:bg-line hover:text-ink'
-
+/**
+ * 圆角全圆的 chip —— 跟方形按钮区分开：
+ * 方形的是「做一件事」，全圆的是「选一个值」。
+ */
 export default function ChipGroup({ label, options, selected, onToggle }: Props) {
   return (
     <div>
-      <div className="mb-2 text-xs text-ink-soft">{label}</div>
+      <div className="mb-2 text-xs text-ink-3">{label}</div>
       <div className="flex flex-wrap gap-2">
         {options.map((o) => {
           const on = selected.includes(o)
@@ -23,7 +24,11 @@ export default function ChipGroup({ label, options, selected, onToggle }: Props)
               type="button"
               aria-pressed={on}
               onClick={() => onToggle(o)}
-              className={`${CHIP} ${on ? 'bg-jade text-white' : IDLE}`}
+              className={`h-8 rounded-full border px-3 text-[13px] transition-colors ${
+                on
+                  ? 'border-jade bg-jade font-medium text-white'
+                  : 'border-line-2 bg-surface text-ink-2 hover:border-ink-3 hover:text-ink'
+              }`}
             >
               {o}
             </button>

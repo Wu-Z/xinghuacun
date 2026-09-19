@@ -14,6 +14,8 @@ export type ItineraryLeg = {
   /** 这一段从哪到哪。索引对应点列表 [origin, ...stops, end?] */
   fromName: string
   toName: string
+  /** 这一段怎么走。每条段各自一种 —— 近的走路、远的坐地铁是同一条路线的常态 */
+  mode: TravelMode
   durationSeconds: number
   distanceMeters: number
   /** 该段规划失败、已降级为直线 —— 时长与里程因此不可靠 */
@@ -21,7 +23,6 @@ export type ItineraryLeg = {
 }
 
 export type Itinerary = {
-  mode: TravelMode
   stops: ItineraryStop[]
   legs: ItineraryLeg[]
   totalTravelMinutes: number
@@ -36,8 +37,12 @@ export type ItineraryInput = {
   /** 按拜访顺序排列的站点 */
   stops: { id: string; name: string; point: LatLng }[]
   /** 按顺序的段：origin→stops[0]、stops[0]→stops[1]、…、stops[n-1]→end */
-  legs: { durationSeconds: number; distanceMeters: number; degraded?: boolean }[]
-  mode: TravelMode
+  legs: {
+    mode: TravelMode
+    durationSeconds: number
+    distanceMeters: number
+    degraded?: boolean
+  }[]
 }
 
 /**
@@ -69,6 +74,7 @@ export function buildItinerary(input: ItineraryInput): Itinerary {
   const legs: ItineraryLeg[] = input.legs.map((l, i) => ({
     fromName: stops[i]?.name ?? '',
     toName: stops[i + 1]?.name ?? '',
+    mode: l.mode,
     durationSeconds: l.durationSeconds,
     distanceMeters: l.distanceMeters,
     degraded: l.degraded ?? false,
@@ -77,7 +83,6 @@ export function buildItinerary(input: ItineraryInput): Itinerary {
   const totalSeconds = legs.reduce((a, l) => a + l.durationSeconds, 0)
 
   return {
-    mode: input.mode,
     stops,
     legs,
     totalTravelMinutes: Math.round(totalSeconds / 60),

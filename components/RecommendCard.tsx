@@ -13,14 +13,27 @@ type Props = {
 
 const STATUS: Record<string, string> = { open: '营业中', closed: '已打烊', unknown: '' }
 
+/** 元信息之间的分隔点。比正文更淡，只起断句作用，不参与阅读 */
+function Sep() {
+  return <span className="text-line-2">·</span>
+}
+
 export default function RecommendCard({ place, order, onToggle, onOpenDetail, onAsk }: Props) {
   const selectable = place.verified
   const selected = order !== null
 
+  /*
+   * 只把「主理由」放在卡片上。
+   * skill 按用户说意图的先后顺序排 fit，所以第一条就是他最在意的那件事；
+   * 剩下几条是补充证据，摊在卡片上只会让每条都变得一样重、一样要读 ——
+   * 它们完整地留在详情面板里。
+   */
+  const [mainFit] = place.fit
+
   return (
     <div
-      className={`anim-fade relative flex gap-3 py-3 pl-4 pr-3 transition-colors ${
-        selected ? 'bg-jade-wash' : selectable ? 'hover:bg-mist/60' : 'bg-[#fbfbfa]'
+      className={`anim-fade relative flex gap-3 px-4 py-4 transition-colors ${
+        selected ? 'bg-jade-50' : selectable ? 'hover:bg-paper' : 'stripe-locked'
       }`}
     >
       {selected && <span className="absolute inset-y-0 left-0 w-[3px] bg-jade" aria-hidden />}
@@ -40,20 +53,22 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail, on
             : `${place.name} 高德未能核实，无法加入路线`
         }
         aria-pressed={selected}
-        className={`tnum mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
+        className={`tnum mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
           selected
             ? 'bg-jade text-white'
             : selectable
-              ? 'border border-line text-ink-soft hover:border-jade hover:text-jade'
-              : 'cursor-not-allowed border border-dashed border-line text-ink-soft'
+              ? 'border border-line-2 text-ink-3 hover:border-jade hover:text-jade'
+              : 'cursor-not-allowed border border-dashed border-line-2 text-ink-3'
         }`}
       >
         {selected ? order : selectable ? '+' : '·'}
       </button>
 
       <button onClick={() => onOpenDetail(place.name)} className="min-w-0 flex-1 text-left">
-        <div className="flex items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{place.name}</span>
+        <div className="flex items-start gap-2">
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-[1.4] tracking-[-0.1px] text-ink">
+            {place.name}
+          </span>
           {/*
             高亮判据用 tier 而不是 rank === 1。
             rank 是顺序、tier 才是档位；而 parseSkillOutput 在 rank 缺失时
@@ -61,51 +76,54 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail, on
             跟 tier 走则无论 rank 怎么写都不会错判。
           */}
           <span
-            className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${
-              place.tier.startsWith('首选') ? 'bg-jade-wash text-jade' : 'bg-mist text-ink-soft'
+            className={`shrink-0 rounded-xs px-2 py-0.5 text-xs font-medium ${
+              place.tier.startsWith('首选')
+                ? 'bg-jade-50 text-jade shadow-[inset_0_0_0_1px_var(--color-jade-100)]'
+                : 'bg-mist text-ink-3'
             }`}
           >
             {place.tier}
           </span>
         </div>
 
-        <div className="mt-1 text-xs text-ink-soft">{place.category}</div>
+        <div className="mt-px text-[12.5px] text-ink-3">{place.category}</div>
 
-        {/* 复合地点：提前告诉用户细化后会被拆开，否则列表突然变样会懵 */}
-        {place.contains && place.contains.length > 0 && (
-          <div className="mt-2 rounded-md bg-mist px-2.5 py-1.5 text-[11.5px] leading-relaxed text-ink-soft">
-            含 {place.contains.length} 个可玩点：{place.contains.join(' / ')}
-            <br />
-            选定后会拆成独立站点，才能逐个规划路线
+        {/* 主理由：这张卡片上唯一带强调的地方，扫读时一眼看到「为什么推荐它」 */}
+        {mainFit && (
+          <div className="mt-2 border-l-2 border-jade-100 pl-2.5 text-[13px] leading-[1.6] text-ink-2">
+            <b className="font-semibold text-jade-deep">{mainFit.tag}</b>
+            {` —— ${mainFit.why}`}
           </div>
         )}
 
-        {place.fit.length > 0 && (
-          <div className="mt-2 space-y-1">
-            {place.fit.map((f) => (
-              <div key={f.tag} className="flex gap-2 text-xs leading-relaxed">
-                <span className="shrink-0 font-semibold text-jade">{f.tag}</span>
-                <span className="text-ink-soft">{f.why}</span>
-              </div>
-            ))}
+        {/* 复合地点：提前告诉用户细化后会被拆开，否则列表突然变样会懵 */}
+        {place.contains && place.contains.length > 0 && (
+          <div className="mt-2.5 rounded-xs border border-line bg-paper px-2.5 py-2 text-xs leading-[1.6] text-ink-2">
+            含 {place.contains.length} 个可玩点：{place.contains.join(' / ')}
+            <br />
+            <span className="text-ink-3">加入路线后会拆成独立站点，才能逐段规划</span>
           </div>
         )}
 
         {place.verified ? (
-          <div className="mt-2 flex items-center gap-2.5 text-[11.5px] text-ink-soft">
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-ink-3">
             {place.distanceMeters != null && (
               // 「直线」两个字不能省：这不是驾车里程，不标就是误导
               <span className="tnum">{(place.distanceMeters / 1000).toFixed(1)} 公里 · 直线</span>
             )}
+            {place.distanceMeters != null && place.cost && <Sep />}
             {place.cost && <span>{place.cost}</span>}
+            {(place.distanceMeters != null || place.cost) &&
+              place.openStatus &&
+              STATUS[place.openStatus] && <Sep />}
             {place.openStatus && STATUS[place.openStatus] && (
-              <span className={place.openStatus === 'open' ? 'text-jade' : ''}>
+              <span className={place.openStatus === 'open' ? 'font-medium text-jade-deep' : ''}>
                 {STATUS[place.openStatus]}
               </span>
             )}
           </div>
         ) : (
-          <div className="mt-2 text-[11.5px] leading-relaxed text-amber-700">
+          <div className="mt-2.5 rounded-xs border border-amber-line bg-amber-bg px-2.5 py-2 text-xs leading-[1.6] text-amber">
             高德未能核实到该地点，无法上图、不参与路线规划。
             <AmapLink url={place.amapUrl} className="underline underline-offset-2">
               在高德地图中查看
@@ -114,13 +132,24 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail, on
         )}
       </button>
 
-      {/* 追问入口：只针对这一个地点 */}
-      <button
-        onClick={() => onAsk(place.name)}
-        className="shrink-0 self-start rounded-md px-2 py-1 text-[11.5px] text-ink-soft transition-colors hover:bg-mist hover:text-jade"
-      >
-        追问
-      </button>
+      {/*
+        操作列竖排在右：宽屏下它是卡片最右边一列，不跟正文抢横向空间。
+        「详情」是新增的 —— 原来整张卡都是详情入口，但没有任何东西说明这一点。
+      */}
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <button
+          onClick={() => onOpenDetail(place.name)}
+          className="h-8 rounded-xs px-2.5 text-xs text-ink-3 transition-colors hover:bg-mist hover:text-jade-deep"
+        >
+          详情
+        </button>
+        <button
+          onClick={() => onAsk(place.name)}
+          className="h-8 rounded-xs px-2.5 text-xs text-ink-3 transition-colors hover:bg-mist hover:text-jade-deep"
+        >
+          追问
+        </button>
+      </div>
     </div>
   )
 }

@@ -26,6 +26,9 @@ export type Verification = {
 
 export type VerifyProvider = {
   verify(input: VerifyInput): Promise<Verification>
-  /** 逆地理编码。label 必须已经模糊到不细于街区 */
+  /**
+   * 逆地理编码。label 是给人看的「你所在的那一片」，形如
+   * 「厦门市集美区软件园B区」—— 市 + 区 + 区域名，不含门牌号。
+   */
   reverseGeocode(point: LatLng): Promise<{ label: string; city: string }>
 }

@@ -2,6 +2,7 @@
 
 import type { RecommendPlace } from '@/lib/core/model'
 import RecommendCard from './RecommendCard'
+import ViewSwitch from './ViewSwitch'
 
 type Props = {
   places: RecommendPlace[]
@@ -17,6 +18,8 @@ type Props = {
    * 拿它当「用户选了几个」会得出「选了 4 个」这种与事实不符的说法。
    */
   finalizeNote: { before: number; selected: number; after: number } | null
+  /** 有路线可看时才给切换（传了才渲染），否则这两个标签点了没反应 */
+  viewSwitch?: { view: 'list' | 'timeline'; onChange: (view: 'list' | 'timeline') => void }
   onToggle: (name: string) => void
   onOpenDetail: (name: string) => void
   onAsk: (name: string | null) => void
@@ -25,10 +28,10 @@ type Props = {
 function Fold({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <details className="border-t border-line">
-      <summary className="cursor-pointer px-4 py-2.5 text-xs text-ink-soft hover:text-ink">
+      <summary className="cursor-pointer px-4 py-2.5 text-[12.5px] text-ink-3 hover:text-ink">
         {title}
       </summary>
-      <div className="px-4 pb-3 text-xs leading-relaxed text-ink-soft">{children}</div>
+      <div className="px-4 pb-3 text-[12.5px] leading-[1.8] text-ink-3">{children}</div>
     </details>
   )
 }
@@ -42,7 +45,7 @@ type Section =
  * 两种分组，语义完全不同，别混：
  *
  * - **`parent`**（细化）：一个复合地点被**拆开**成若干站点。子点继承父级选中是合理的，
- *   它们本来就是同一个地方。组头写「↓ N 个站点」。
+ *   它们本来就是同一个地方。组头写「N 个站点（由 1 个复合地点拆出）」。
  * - **`askedFrom`**（追问）：一条推荐是「在某个地点旁边」被找出来的。这只是**来源归属**，
  *   两者是各自独立的行程项，**不级联选中**。组头写「的追问新增」。
  */
@@ -54,8 +57,16 @@ function buildSections(places: RecommendPlace[]): Section[] {
   const childrenOf = new Map<string, RecommendPlace[]>()
   const consumed = new Set<string>()
   for (const p of places) {
+    /*
+     * 有 askedFrom 就归锚点，不看 parent。
+     *
+     * refine 里出现 parent 是 skill 违约（parent 属于 finalize，契约写死的），
+     * 但真出现了也不能让它生效：那条「追问新增」会被塞进
+     * 「集美学村 · N 个站点（由 1 个复合地点拆出）」的分组，而那句话是假的 ——
+     * 根本没发生过拆解。来源归属才是这里唯一为真的事实。
+     */
     const anchor = p.askedFrom
-    if (!anchor || p.parent) continue
+    if (!anchor) continue
 
     const target = byName.get(anchor)
     if (!target || target.askedFrom || target.parent) continue
@@ -95,6 +106,7 @@ export default function RecommendList({
   lastExchange,
   busy,
   finalizeNote,
+  viewSwitch,
   onToggle,
   onOpenDetail,
   onAsk,
@@ -121,7 +133,7 @@ export default function RecommendList({
 
   return (
     <div>
-      <div className="flex items-center gap-2 border-b border-line bg-mist px-4 py-2 text-[11.5px] text-ink-soft">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-paper px-4 py-2.5 text-xs text-ink-3">
         <span>
           {places.length} 条推荐
           {unverified > 0 && ` · ${unverified} 条未能核实`}
@@ -130,19 +142,32 @@ export default function RecommendList({
           <button
             onClick={() => onAsk(null)}
             disabled={busy}
-            className="ml-auto text-jade hover:underline disabled:opacity-50"
+            className="text-jade hover:underline disabled:text-ink-3"
           >
             对这批不满意？
           </button>
         )}
+        {viewSwitch && (
+          <div className="ml-auto">
+            <ViewSwitch view={viewSwitch.view} onChange={viewSwitch.onChange} />
+          </div>
+        )}
+      </div>
+
+      {/*
+        「直线」这件事一次说清楚，而不是每条卡片各藏一句。
+        它是这个产品最容易让人误会的地方：列表上的公里数不是要走的路。
+      */}
+      <div className="border-b border-line bg-jade-50 px-4 py-2.5 text-[12.5px] leading-[1.65] text-jade-deep">
+        距离是<b className="font-semibold">直线距离</b>，不是要走的路 —— 真实里程要等你选定后才算得出来。
       </div>
 
       {/* 追问的回答与它改动了什么 —— 变化必须可见、可解释 */}
       {lastExchange && (
-        <div className="border-b border-line bg-jade-wash/60 px-4 py-3 text-xs leading-relaxed">
+        <div className="border-b border-line bg-jade-50/60 px-4 py-3 text-[12.5px] leading-[1.65]">
           <div className="text-ink">{lastExchange.answer}</div>
           {lastExchange.removed.length > 0 && (
-            <ul className="mt-1.5 space-y-0.5 text-ink-soft">
+            <ul className="mt-1.5 space-y-0.5 text-ink-3">
               {lastExchange.removed.map((r) => (
                 <li key={r.name}>
                   移除了 <span className="text-ink">{r.name}</span> —— {r.reason}
@@ -156,15 +181,17 @@ export default function RecommendList({
       {/* 细化完成后的说明。必须交代「未选的已移除」——
           否则用户会发现列表从 3 条变 1 条，以为东西丢了 */}
       {refined && finalizeNote && (
-        <div className="border-b border-line bg-mist px-4 py-2.5 text-[11.5px] leading-relaxed text-ink-soft">
-          已把选中的 {finalizeNote.selected} 个细化为 {finalizeNote.after} 个站点
+        <div className="border-b border-line bg-jade-50 px-4 py-2.5 text-[12.5px] leading-[1.65] text-jade-deep">
+          已把选中的 <b className="font-semibold">{finalizeNote.selected} 个</b>细化为{' '}
+          <b className="font-semibold">{finalizeNote.after} 个站点</b>
           {finalizeNote.before > finalizeNote.selected && (
             <>
-              ；列表里其余 {finalizeNote.before - finalizeNote.selected} 个未选的地点已移除
+              ；没选的 <b className="font-semibold">{finalizeNote.before - finalizeNote.selected} 个</b>
+              已从列表移除
             </>
           )}
-          。子点默认继承你原来的选择，<span className="text-ink">请再过一遍</span>
-          ，取消掉不想去的；新增的点需要你主动勾选。
+          。子点沿用你原来的选择，<b className="font-semibold">请再过一遍</b>
+          ；新增的站点需要你主动勾选。
         </div>
       )}
 
@@ -175,24 +202,36 @@ export default function RecommendList({
           ) : s.kind === 'anchored' ? (
             <div key={s.item.name} className="anim-fade">
               {renderCard(s.item)}
-              {/* 缩进 + 左侧竖线表示「归属」，不是「包含」——
-                  措辞用「的追问新增」而不是「附近」，后者会替 skill
-                  担保一件它没说过的事：实测有新增项自己承认要接驳一站 */}
-              <div className="border-t border-line bg-mist/40 pl-4">
-                <div className="py-1.5 text-[11.5px] text-ink-soft">
+              {/*
+                归属：缩进 + 左侧竖线 + 转角箭头 —— 读起来是「挂在上面那条下面」。
+                措辞用「的追问新增」而不是「附近」，后者会替 skill
+                担保一件它没说过的事：实测有新增项自己承认要接驳一站。
+
+                这三样一个都不能省：卡片本身是整宽的，只挂一条 2px 的线
+                而不缩进的话，子卡和顶层卡长得一模一样 —— 那就等于没表达。
+              */}
+              <div className="border-t border-line bg-mist/40 pb-2">
+                <div className="flex items-baseline gap-1.5 py-1.5 pl-3 text-xs text-ink-2">
+                  {/* 箭头是装饰，读屏不该念出来；归属靠它和缩进一起表达 */}
+                  <span aria-hidden className="text-jade">
+                    ↳
+                  </span>
                   「{s.item.name}」的追问新增
                 </div>
-                <div className="divide-y divide-line border-l-2 border-jade/25">
+                <div className="ml-6 divide-y divide-line border-l-2 border-jade-100">
                   {s.asked.map(renderCard)}
                 </div>
               </div>
             </div>
           ) : (
             <div key={s.parent}>
-              <div className="bg-mist/70 px-4 py-1.5 text-[11.5px] font-medium text-ink-soft">
-                {s.parent} <span className="text-ink-soft/60">↓ {s.items.length} 个站点</span>
+              <div className="flex items-center gap-2 bg-mist px-4 py-[7px] text-xs font-semibold text-ink-2">
+                {s.parent}
+                <span className="font-normal text-ink-3">
+                  · {s.items.length} 个站点（由 1 个复合地点拆出）
+                </span>
               </div>
-              <div className="divide-y divide-line border-t border-line">{s.items.map(renderCard)}</div>
+              <div className="divide-y divide-line">{s.items.map(renderCard)}</div>
             </div>
           ),
         )}

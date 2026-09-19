@@ -4,14 +4,17 @@ import Link from 'next/link'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FollowupBar from '@/components/FollowupBar'
 import MapCanvas from '@/components/MapCanvas'
+import PlaceCardSkeleton from '@/components/PlaceCardSkeleton'
 import RecommendList from '@/components/RecommendList'
-import RecommendSummary from '@/components/RecommendSummary'
 import RouteSummaryBar from '@/components/RouteSummaryBar'
+import SelectionTray from '@/components/SelectionTray'
 import SparkleIcon from '@/components/SparkleIcon'
 import StopDetail from '@/components/StopDetail'
 import TripTimeline from '@/components/TripTimeline'
+import ViewSwitch from '@/components/ViewSwitch'
 import { usePlan } from '@/lib/client/plan-session'
 import { readRecommendStream } from '@/lib/client/recommend-stream'
+import { summarizeModes } from '@/lib/core/format'
 import { buildItinerary } from '@/lib/core/itinerary'
 import { pickRouteMode } from '@/lib/core/route-mode'
 import { applyDiff } from '@/lib/recommend/apply-diff'
@@ -48,6 +51,18 @@ function Working({ children }: { children: ReactNode }) {
   )
 }
 
+/** 停下来 / 断线之后的共同出口：按上次的任务类型重跑一遍，把没拿到的补齐 */
+function ResumeButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="shrink-0 whitespace-nowrap rounded-xs border border-current px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-75"
+    >
+      补完剩下的
+    </button>
+  )
+}
+
 export default function PlanPage() {
   const draft = usePlan()
 
@@ -56,6 +71,8 @@ export default function PlanPage() {
   const [error, setError] = useState<string | null>(null)
   /** 流中途断了：已生成的部分保留，但要说清楚它是残缺的 */
   const [partialError, setPartialError] = useState<string | null>(null)
+  /** 用户自己按的停止。它不是故障，不该跟「失败」用同一套说法 */
+  const [stopped, setStopped] = useState(false)
 
   const [places, setPlaces] = useState<RecommendPlace[]>(NO_PLACES)
   const [excluded, setExcluded] = useState<{ name: string; reason: string }[]>(NO_EXCLUDED)
@@ -84,6 +101,9 @@ export default function PlanPage() {
   const startedRef = useRef(false)
   /** 细化前选中的父级名字，用来给子点继承选中态 */
   const inheritFromRef = useRef<string[]>([])
+  /** 用户按了「停止」：把这次的异常当成主动取消，而不是故障 */
+  const stoppedRef = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
   /**
    * 上一次流式请求的内容，供「重试」原样重跑。
    *
@@ -128,11 +148,15 @@ export default function PlanPage() {
 
       const id = ++reqIdRef.current
       const before = places.length
+      const controller = new AbortController()
+      abortRef.current = controller
+      stoppedRef.current = false
       lastStreamRef.current = { task, extra }
       setBusy(true)
       setStage(null)
       setError(null)
       setPartialError(null)
+      setStopped(false)
       setFinalizeNote(null)
       setPlaces(NO_PLACES)
       setExcluded(NO_EXCLUDED)
@@ -152,6 +176,7 @@ export default function PlanPage() {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
+          signal: controller.signal,
         })
 
         if (!res.ok) {
@@ -190,8 +215,11 @@ export default function PlanPage() {
         }
       } catch (e) {
         if (id !== reqIdRef.current) return
-        // 已有卡片时不整批丢弃 —— 用户看到的是真实生成出来的东西
-        if (acc.length > 0) {
+        if (stoppedRef.current) {
+          // 用户按的停止：这是他下的命令，不是系统出错
+          setStopped(true)
+        } else if (acc.length > 0) {
+          // 已有卡片时不整批丢弃 —— 用户看到的是真实生成出来的东西
           setPartialError(e instanceof Error ? e.message : '生成中断')
         } else {
           setError(e instanceof Error ? e.message : '未知原因')
@@ -200,12 +228,24 @@ export default function PlanPage() {
         if (id === reqIdRef.current) {
           setBusy(false)
           setStage(null)
+          abortRef.current = null
         }
       }
     },
     // places 只为取细化前的条数，用于向用户交代「未选的已移除」
     [baseBody, places],
   )
+
+  /** 停止与断线共用同一个出口：按上次的任务类型重跑，把没拿到的补齐 */
+  const resume = useCallback(() => {
+    const last = lastStreamRef.current
+    void runStreaming(last.task, last.extra)
+  }, [runStreaming])
+
+  const stop = useCallback(() => {
+    stoppedRef.current = true
+    abortRef.current?.abort()
+  }, [])
 
   // 首页点了「帮我推荐」才跳过来，所以落地即开跑；用 ref 保证只跑一次
   useEffect(() => {
@@ -325,7 +365,9 @@ export default function PlanPage() {
         body: JSON.stringify({
           origin: draft.point,
           stops,
-          mode: pickRouteMode(draft.prefs.travelMode),
+          // 没选过就不传：由服务端按 地铁 → 骑行 → 自驾 依次试。
+          // 在这里替用户写死一种，就等于把「没偏好」说成了「偏好这种」
+          mode: pickRouteMode(draft.prefs.travelMode) ?? undefined,
           ...(end ? { end: end.point } : {}),
         }),
         signal: controller.signal,
@@ -356,13 +398,26 @@ export default function PlanPage() {
         return { id: name, name, point: place?.point ?? { lng: 0, lat: 0 } }
       }),
       legs: route.legs.map((l) => ({
+        mode: l.mode,
         durationSeconds: l.durationSeconds,
         distanceMeters: l.distanceMeters,
         degraded: l.degraded,
       })),
-      mode: route.mode,
     })
   }, [route, draft, end, places])
+
+  /*
+   * 取消勾选把站点减到 2 个以下时路线就没了；此时若还停在「行程」上，
+   * 用户看到的会是一块空白 —— 拉回列表。
+   *
+   * 用「渲染期间调整状态」而不是放进 effect：effect 里改状态要等这一帧提交完，
+   * 而这一帧本身正是那块空白。放在渲染里，React 会当场重算，不提交空白帧。
+   */
+  const [hadRoute, setHadRoute] = useState(false)
+  if (hadRoute !== Boolean(itinerary)) {
+    setHadRoute(Boolean(itinerary))
+    if (!itinerary) setView('list')
+  }
 
   const togglePlace = useCallback((name: string) => {
     setSelectedOrder((prev) =>
@@ -374,13 +429,16 @@ export default function PlanPage() {
   if (!draft) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-paper px-6">
-        <div className="text-center">
-          <p className="text-sm text-ink">还没有出发点和偏好</p>
+        <div className="max-w-[320px] text-center">
+          <p className="text-sm font-medium text-ink">还没有出发点和偏好</p>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">
+            先告诉我从哪出发、想怎么玩。
+          </p>
           <Link
             href="/"
-            className="mt-4 inline-block rounded-lg bg-jade px-4 py-2.5 text-sm font-medium text-white hover:bg-jade-deep"
+            className="mt-5 inline-flex h-10 items-center rounded-sm bg-jade px-4 text-[13px] font-medium text-white transition-colors hover:bg-jade-deep"
           >
-            回首页填一下
+            去首页填一下
           </Link>
         </div>
       </main>
@@ -388,17 +446,25 @@ export default function PlanPage() {
   }
 
   const detail = detailName ? (places.find((p) => p.name === detailName) ?? null) : null
+  const canRefine = canFinalize(places, selectedOrder)
 
   return (
-    <main className="flex h-dvh overflow-hidden">
-      <aside className="relative flex w-[430px] shrink-0 flex-col border-r border-line bg-paper">
-        <div className="shrink-0 border-b border-line px-4 py-4">
-          <Link href="/" className="text-sm font-semibold text-ink hover:text-jade">
+    /*
+      手机上是「地图一条 + 列表铺满」，平板起才分栏。
+      用 flex-col-reverse 而不是改 DOM 顺序：键盘与读屏的先后仍是
+      「先列表、后地图」，视觉上地图在上。
+    */
+    <main className="flex h-dvh flex-col-reverse overflow-hidden bg-paper md:flex-row">
+      <aside className="relative flex min-h-0 w-full flex-1 flex-col border-line bg-surface md:w-[360px] md:flex-none md:border-r lg:w-[420px]">
+        {/*
+          这里原来挂着「出发点 + 偏好的摘要卡 + 修改」。用户不需要在挑地方的时候
+          再看见一遍自己从哪出发 —— 那是在首页说过的事，重复一遍只是占版面。
+          回首页改填的出口是左上角那个品牌名。
+        */}
+        <div className="flex shrink-0 items-center border-b border-line px-4 py-3">
+          <Link href="/" className="text-[13.5px] font-semibold text-ink hover:text-jade">
             周边去哪
           </Link>
-          <div className="mt-3">
-            <RecommendSummary location={draft.label} value={draft.prefs} editHref="/" />
-          </div>
         </div>
 
         {askTarget && (
@@ -411,102 +477,129 @@ export default function PlanPage() {
         )}
 
         <div className="flex-1 overflow-y-auto">
-          {/* 流式：给出真实阶段，而不是一句静态的「正在处理」 */}
+          {/* 首屏：阶段文案 + 骨架卡片 + 停止。
+              等二十秒的界面不能一动不动，也不能只给一句「正在处理」——
+              那样看不出它在哪一步、还剩多少 */}
           {busy && places.length === 0 && (
-            <div className="px-4 py-6 text-sm text-ink-soft">
-              <Working>
-                {stage === 'generating' ? '正在生成地点…' : '正在检索与思考…'}
-              </Working>
+            <div>
+              <div className="flex items-center gap-3 border-b border-line px-4 py-3 text-[13px] text-ink-2">
+                <Working>
+                  {stage === 'generating' ? '正在生成地点…' : '正在检索与思考…'}
+                </Working>
+                <button
+                  onClick={stop}
+                  className="ml-auto h-8 shrink-0 rounded-sm border border-line-2 px-3 text-xs text-ink-2 transition-colors hover:border-ink-3 hover:text-ink"
+                >
+                  停止
+                </button>
+              </div>
+              <div className="divide-y divide-line">
+                <PlaceCardSkeleton />
+                <PlaceCardSkeleton />
+                <PlaceCardSkeleton />
+              </div>
             </div>
           )}
 
           {busy && places.length > 0 && (
-            <div className="border-b border-line bg-mist px-4 py-2 text-[11.5px] text-ink-soft">
+            <div className="flex items-center gap-3 border-b border-line bg-mist px-4 py-2 text-xs text-ink-2">
               <Working>已生成 {places.length} 条，还在继续…</Working>
+              <button
+                onClick={stop}
+                className="ml-auto shrink-0 rounded-xs px-2 py-1 text-ink-2 transition-colors hover:bg-mist-2 hover:text-ink"
+              >
+                停止
+              </button>
             </div>
           )}
 
+          {/* 用户自己按的停止：说清停在哪、剩下的还能拿 */}
+          {!busy && stopped && (
+            <div className="flex items-center gap-3 border-b border-line bg-mist px-4 py-2.5 text-xs leading-[1.6] text-ink-2">
+              <span>
+                已停止。
+                {places.length > 0
+                  ? `下面是已经收到的 ${places.length} 条，可能不完整。`
+                  : '这次一条都还没收到。'}
+              </span>
+              <div className="ml-auto text-jade">
+                <ResumeButton onClick={resume} />
+              </div>
+            </div>
+          )}
+
+          {/* 生成中断用琥珀：数据不确定，但已有的内容还能用，不是「失败」 */}
           {partialError && (
-            <div className="border-b border-line bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
-              生成中断：{partialError}
-              <br />
-              下面是已经生成出来的部分，可能不完整。
-              <button
-                onClick={() => {
-                  const last = lastStreamRef.current
-                  void runStreaming(last.task, last.extra)
-                }}
-                className="ml-1 underline underline-offset-2"
-              >
-                重试
-              </button>
+            <div className="flex items-start gap-3 border-b border-amber-line bg-amber-bg px-4 py-2.5 text-xs leading-[1.6] text-amber">
+              <span>
+                生成中断：{partialError}
+                <br />
+                下面是已经生成出来的部分，可能不完整。
+              </span>
+              <div className="ml-auto shrink-0">
+                <ResumeButton onClick={resume} />
+              </div>
             </div>
           )}
 
+          {/* 一条都没生成出来才是真失败：用红，并且必须给重试 */}
           {!busy && error && (
-            <div className="px-4 py-6 text-sm">
-              <p className="font-medium text-red-700">推荐失败</p>
-              <p className="mt-1 text-ink-soft">{error}</p>
-              <button
-                onClick={() => runStreaming('initial')}
-                className="mt-3 rounded-md bg-mist px-3 py-1.5 text-xs text-ink hover:bg-line"
-              >
-                重试
-              </button>
+            <div className="px-4 py-5">
+              <div className="rounded-sm border border-red-line bg-red-bg px-4 py-3.5 text-[12.5px] leading-[1.65] text-red">
+                <p className="font-semibold">推荐没跑出来</p>
+                <p className="mt-1">{error}</p>
+                <button
+                  onClick={() => runStreaming('initial')}
+                  className="mt-3 h-9 rounded-sm bg-surface px-3.5 text-[13px] font-medium text-red shadow-[inset_0_0_0_1px_var(--color-red-line)]"
+                >
+                  重试
+                </button>
+              </div>
             </div>
           )}
 
           {/* 有路线了才给切换：没路线时时间轴是空的，没必要露出来 */}
-          {itinerary && (
-            <div className="flex shrink-0 gap-1 border-b border-line px-4 py-2">
-              {(
-                [
-                  ['list', '列表'],
-                  ['timeline', '出行'],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setView(key)}
-                  aria-pressed={view === key}
-                  className={`rounded-md px-3 py-1 text-xs transition-colors ${
-                    view === key ? 'bg-jade text-white' : 'text-ink-soft hover:bg-mist'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+          {itinerary && view === 'timeline' && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-paper px-4 py-2.5 text-xs text-ink-3">
+              <span>
+                {itinerary.stops.filter((s) => s.kind === 'stop').length} 站 ·{' '}
+                {summarizeModes(itinerary.legs)}
+              </span>
+              <div className="ml-auto">
+                <ViewSwitch view={view} onChange={setView} />
+              </div>
             </div>
           )}
 
           {/* key={view} 让切换时重新挂载，从而触发一次淡入 ——
               说明「这是同一个东西的另一种看法」，而不是跳转到了别处 */}
           <div key={view} className="anim-fade">
-          {view === 'timeline' && itinerary && (
-            <TripTimeline
-              itinerary={itinerary}
-              places={places}
-              hasEnd={end !== null}
-              onSetEnd={() => setPickingEnd(true)}
-              onClearEnd={() => setEnd(null)}
-              onOpenDetail={setDetailName}
-            />
-          )}
+            {view === 'timeline' && itinerary && (
+              <TripTimeline
+                itinerary={itinerary}
+                places={places}
+                hasEnd={end !== null}
+                onSetEnd={() => setPickingEnd(true)}
+                onClearEnd={() => setEnd(null)}
+                onOpenDetail={setDetailName}
+              />
+            )}
 
-          {view === 'list' && places.length > 0 && (
-            <RecommendList
-              places={places}
-              visitOrder={visitOrder}
-              excluded={excluded}
-              meta={meta}
-              lastExchange={lastExchange}
-              busy={busy}
-              finalizeNote={finalizeNote}
-              onToggle={togglePlace}
-              onOpenDetail={setDetailName}
-              onAsk={(name) => setAskTarget({ name })}
-            />
-          )}
+            {view === 'list' && places.length > 0 && (
+              <RecommendList
+                places={places}
+                visitOrder={visitOrder}
+                excluded={excluded}
+                meta={meta}
+                lastExchange={lastExchange}
+                busy={busy}
+                finalizeNote={finalizeNote}
+                viewSwitch={itinerary ? { view: 'list', onChange: setView } : undefined}
+                onToggle={togglePlace}
+                onOpenDetail={setDetailName}
+                onAsk={(name) => setAskTarget({ name })}
+              />
+            )}
           </div>
         </div>
 
@@ -515,38 +608,26 @@ export default function PlanPage() {
           之前它们一个在列表底部（要滚动才看见）、一个在列表上方（很容易错过），
           用户勾完地点不知道接下来该干嘛 —— 这是「难用」的主要来源之一。
         */}
-        {view === 'list' && (canFinalize(places, selectedOrder) || selectedOrder.length >= 2) && (
-          <div className="anim-rise shrink-0 space-y-2 border-t border-line bg-paper px-4 py-3">
-            {canFinalize(places, selectedOrder) && (
-              <>
-                <button
-                  onClick={runFinalize}
-                  disabled={busy}
-                  className="w-full rounded-lg bg-mist py-2 text-sm text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  把选中的 {selectedOrder.length} 个细化成站点
-                </button>
-                <p className="text-[11px] leading-relaxed text-ink-soft">
-                  选中的里如果有「含 N 个可玩点」的，细化后会拆成独立站点 ——
-                  只有拆开才能逐段规划路线。
-                </p>
-              </>
-            )}
-            {selectedOrder.length >= 2 && (
-              <button
-                onClick={() => setView('timeline')}
-                className="w-full rounded-lg bg-jade py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jade-deep"
-              >
-                看行程 →
-              </button>
-            )}
-          </div>
-        )}
+        <SelectionTray
+          selectedCount={selectedOrder.length}
+          unit={finalizeNote ? '个站点' : '个地方'}
+          canFinalize={view === 'list' && canRefine}
+          busy={busy}
+          showViewButton={view === 'list'}
+          onClear={() => setSelectedOrder([])}
+          onView={() => setView('timeline')}
+          onFinalize={runFinalize}
+        />
 
-        <StopDetail place={detail} onClose={() => setDetailName(null)} />
+        <StopDetail
+          place={detail}
+          selected={detail ? selectedOrder.includes(detail.name) : false}
+          onToggle={togglePlace}
+          onClose={() => setDetailName(null)}
+        />
       </aside>
 
-      <div className="relative flex-1">
+      <div className="relative h-[38vh] shrink-0 md:h-auto md:min-h-0 md:flex-1">
         <MapCanvas
           origin={draft.point}
           places={places}
@@ -555,18 +636,24 @@ export default function PlanPage() {
           picking={false}
           onPickLocation={() => undefined}
         />
-        <RouteSummaryBar visitOrder={visitOrder} route={route} />
+        {/*
+          顺序卡只压在列表页的地图上。
+          行程页已经有「第 N 站」、每段的时长里程和「路上共 …」，
+          再压一张同样内容的卡只是把地图上半部盖住 —— 而地图恰恰是行程页要看的东西。
+          编号本身不丢：地图标记和列表卡片上的圆圈都带着。
+        */}
+        {view === 'list' && <RouteSummaryBar visitOrder={visitOrder} route={route} />}
       </div>
 
       {/* 终点选点：全屏浮层，选完即关（与首页的地图选点同一套做法） */}
       {pickingEnd && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-paper">
+        <div className="fixed inset-0 z-50 flex flex-col bg-surface">
           <div className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
             <span className="text-sm font-medium text-ink">在地图上点一下，作为终点</span>
             <button
               type="button"
               onClick={() => setPickingEnd(false)}
-              className="ml-auto rounded-md px-3 py-1.5 text-sm text-ink-soft hover:bg-mist hover:text-ink"
+              className="ml-auto rounded-xs px-3 py-1.5 text-sm text-ink-3 transition-colors hover:bg-mist hover:text-ink"
             >
               取消
             </button>

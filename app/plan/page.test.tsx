@@ -61,9 +61,12 @@ function streamOf(places: RecommendPlace[], tail: unknown[] = []): Response {
 }
 
 let recommendCalls: Record<string, unknown>[] = []
+/** 让用例指定假路线每一段的方式。空数组 = 按请求里的 mode 给所有段 */
+let routeLegModes: string[] = []
 
 beforeEach(() => {
   recommendCalls = []
+  routeLegModes = []
   planRef.current = {
     point: { lng: 118.1, lat: 24.57 },
     label: '地图所选位置',
@@ -89,13 +92,15 @@ beforeEach(() => {
           mode?: string
         }
         const stops = req.stops ?? []
+        const modes = routeLegModes.length > 0 ? routeLegModes : stops.map(() => req.mode ?? 'walking')
         return new Response(
           JSON.stringify({
-            mode: req.mode ?? 'walking',
             order: stops.map((s) => s.id),
-            legs: stops.map(() => ({
-              fromIndex: 0,
-              toIndex: 0,
+            // 出行方式是逐段给的，界面按段显示
+            legs: stops.map((_, i) => ({
+              fromIndex: i - 1,
+              toIndex: i,
+              mode: modes[i] ?? 'walking',
               durationSeconds: 600,
               distanceMeters: 3000,
               polyline: [],
@@ -227,10 +232,13 @@ describe('结果页 · 细化', () => {
     await clickButton(/选择 集美学村/)
     await clickButton(/细化成站点/)
 
-    // 关键断言：说的是「选中的 1 个」，不是继承后的 2 个
-    await waitFor(() => expect(screen.getByText(/已把选中的 1 个细化为 2 个站点/)).toBeTruthy(), {
+    // 关键断言：说的是「选中的 1 个」，不是继承后的 2 个。
+    // 数字在说明条里是加粗的（<b>），所以整段读、去掉空白再比
+    const allText = () => document.body.textContent?.replace(/\s+/g, '') ?? ''
+    await waitFor(() => expect(allText()).toContain('已把选中的1个细化为2个站点'), {
       timeout: 3000,
     })
+    expect(allText()).not.toContain('已把选中的2个')
   })
 
   it('细化后按钮消失，不会再点第二次', async () => {
@@ -290,7 +298,8 @@ describe('结果页 · 中途失败与重试', () => {
 
     await waitFor(() => expect(screen.getByText(/生成中断/)).toBeTruthy(), { timeout: 3000 })
 
-    await clickButton('重试')
+    // 中途断流的出口叫「补完剩下的」：整批重来会把用户已经看到的东西换掉
+    await clickButton('补完剩下的')
 
     await waitFor(() => expect(recommendCalls).toHaveLength(3), { timeout: 3000 })
     // 第三次调用必须是 finalize —— 这正是那个 bug 会答错的地方
@@ -371,5 +380,45 @@ describe('结果页 · 下一步引导', () => {
 
     // 切过去后应该看到时间轴的合计行
     await waitFor(() => expect(screen.getByText(/路上共/)).toBeTruthy(), { timeout: 3000 })
+  })
+
+  it('混用方式的路线，行程页顶部两种方式都说', async () => {
+    // 出行方式逐段定之后，整条路线可能一半走路一半坐地铁。
+    // 顶部只说一种（以前是 itinerary.mode），就跟下面的时间轴对不上了
+    routeLegModes = ['walking', 'transit']
+    nextResponses = [streamOf([COMPOSITE, PLAIN])]
+    render(<PlanPage />)
+    await waitForCards(2)
+
+    await clickButton(/选择 集美学村/)
+    await clickButton(/选择 海堤路/)
+    await clickButton(/看行程/)
+
+    await waitFor(
+      () => expect(screen.getByText(/2 站 · 步行 \+ 公交\/地铁/)).toBeTruthy(),
+      { timeout: 3000 },
+    )
+  })
+
+  it('地图上的顺序卡只在列表页压着，切到行程页就收起来', async () => {
+    // 行程页的时间轴已经把顺序（第 N 站）与汇总（路上共 …）说完了，
+    // 同一张卡再压在地图顶部，盖住的正是行程页要看的地图
+    nextResponses = [streamOf([COMPOSITE, PLAIN])]
+    render(<PlanPage />)
+    await waitForCards(2)
+
+    await clickButton(/选择 集美学村/)
+    await clickButton(/选择 海堤路/)
+
+    // 列表页：路线算完后这张卡是带汇总的完整形态
+    await waitFor(() => expect(screen.getByText(/拜访顺序/)).toBeTruthy(), { timeout: 3000 })
+
+    await clickButton(/看行程/)
+    await waitFor(() => expect(screen.getByText(/路上共/)).toBeTruthy(), { timeout: 3000 })
+    expect(screen.queryByText(/拜访顺序/)).toBeNull()
+
+    // 切回列表要回来 —— 要的是「只在列表页」，不是「看过一次就没了」
+    fireEvent.click(screen.getByRole('button', { name: '列表' }))
+    await waitFor(() => expect(screen.getByText(/拜访顺序/)).toBeTruthy())
   })
 })

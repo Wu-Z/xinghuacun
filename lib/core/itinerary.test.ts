@@ -14,11 +14,10 @@ function input(over: Partial<ItineraryInput> = {}): ItineraryInput {
     ],
     // origin→a, a→b, b→end
     legs: [
-      { durationSeconds: 600, distanceMeters: 3000 },
-      { durationSeconds: 300, distanceMeters: 1500 },
-      { durationSeconds: 900, distanceMeters: 4000 },
+      { mode: 'driving', durationSeconds: 600, distanceMeters: 3000 },
+      { mode: 'driving', durationSeconds: 300, distanceMeters: 1500 },
+      { mode: 'driving', durationSeconds: 900, distanceMeters: 4000 },
     ],
-    mode: 'driving',
     ...over,
   }
 }
@@ -48,13 +47,29 @@ describe('buildItinerary', () => {
       input({
         end: null,
         legs: [
-          { durationSeconds: 600, distanceMeters: 3000 },
-          { durationSeconds: 300, distanceMeters: 1500 },
+          { mode: 'driving', durationSeconds: 600, distanceMeters: 3000 },
+          { mode: 'driving', durationSeconds: 300, distanceMeters: 1500 },
         ],
       }),
     )
     expect(t.stops.map((s) => s.kind)).toEqual(['start', 'stop', 'stop'])
     expect(t.legs.map((l) => `${l.fromName}→${l.toName}`)).toEqual(['我家→公园', '公园→博物馆'])
+  })
+
+  it('每段各自带自己的出行方式 —— 近的走路、远的坐地铁', () => {
+    // 出行方式是逐段定的。汇总处若拿一种方式去说每一段，
+    // 用户在时间轴上看到的方式就和数据对不上了
+    const t = buildItinerary(
+      input({
+        legs: [
+          { mode: 'walking', durationSeconds: 600, distanceMeters: 700 },
+          { mode: 'transit', durationSeconds: 1200, distanceMeters: 8000 },
+          { mode: 'walking', durationSeconds: 300, distanceMeters: 400 },
+        ],
+      }),
+    )
+
+    expect(t.legs.map((l) => l.mode)).toEqual(['walking', 'transit', 'walking'])
   })
 
   it('总耗时与总里程是各段之和', () => {
@@ -68,7 +83,6 @@ describe('buildItinerary', () => {
     expect(Object.keys(t).sort()).toEqual([
       'hasDegradedLeg',
       'legs',
-      'mode',
       'stops',
       'totalDistanceMeters',
       'totalTravelMinutes',
@@ -87,7 +101,9 @@ describe('buildItinerary', () => {
   })
 
   it('段数少于地点数时不崩（缺的那段不显示）', () => {
-    const t = buildItinerary(input({ legs: [{ durationSeconds: 600, distanceMeters: 3000 }] }))
+    const t = buildItinerary(
+      input({ legs: [{ mode: 'driving', durationSeconds: 600, distanceMeters: 3000 }] }),
+    )
     expect(t.legs).toHaveLength(1)
     expect(t.legs[0].toName).toBe('公园')
   })
@@ -96,9 +112,9 @@ describe('buildItinerary', () => {
     const t = buildItinerary(
       input({
         legs: [
-          { durationSeconds: 0, distanceMeters: 0, degraded: true },
-          { durationSeconds: 300, distanceMeters: 1500 },
-          { durationSeconds: 900, distanceMeters: 4000 },
+          { mode: 'walking', durationSeconds: 0, distanceMeters: 0, degraded: true },
+          { mode: 'driving', durationSeconds: 300, distanceMeters: 1500 },
+          { mode: 'driving', durationSeconds: 900, distanceMeters: 4000 },
         ],
       }),
     )
@@ -116,7 +132,9 @@ describe('buildItinerary', () => {
   it('不改动入参', () => {
     const stops = [{ id: 'a', name: '公园', point: { lng: 1, lat: 1 } }]
     const snapshot = JSON.stringify(stops)
-    buildItinerary(input({ stops, legs: [{ durationSeconds: 600, distanceMeters: 3000 }] }))
+    buildItinerary(
+      input({ stops, legs: [{ mode: 'driving', durationSeconds: 600, distanceMeters: 3000 }] }),
+    )
     expect(JSON.stringify(stops)).toBe(snapshot)
   })
 })

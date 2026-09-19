@@ -1,4 +1,4 @@
-import { blurAddress } from '@/lib/core/address'
+import { areaLabel } from '@/lib/core/address'
 import { asText } from '@/lib/core/coerce'
 import { haversineMeters } from '@/lib/core/geo'
 import type { LatLng, OpenStatus } from '@/lib/core/model'
@@ -94,31 +94,32 @@ export const amapVerifyProvider: VerifyProvider = {
           township?: unknown
           streetNumber?: unknown
         }
+        aois?: { name?: unknown; distance?: unknown }[]
       }
     }
 
     const data = await amapGet<RegeoResponse>('/v3/geocode/regeo', {
       location: `${point.lng},${point.lat}`,
-      extensions: 'base',
+      // all 而不是 base：AOI 只在 all 里返回，而「你在哪一片」正是靠它。
+      // 一次请求，不是两次。
+      extensions: 'all',
+      // 收紧到 200 米，让 AOI 列表偏向「就在脚下」的那几个
+      radius: 200,
     })
 
     const comp = data.regeocode?.addressComponent
     // 直辖市会返回 city 为空数组而不是字符串，这是高德返回结构里真实存在的坑
     const cityText = asText(comp?.city)
 
-    const streetNumber = comp?.streetNumber
-    const street =
-      streetNumber && typeof streetNumber === 'object' && !Array.isArray(streetNumber)
-        ? asText((streetNumber as { street?: unknown }).street)
-        : ''
+    const [nearestAoi] = data.regeocode?.aois ?? []
 
     return {
-      label: blurAddress({
-        province: asText(comp?.province),
-        city: cityText,
+      label: areaLabel({
+        city: cityText || asText(comp?.province),
         district: asText(comp?.district),
+        area: asText(nearestAoi?.name),
+        areaDistanceMeters: Number(asText(nearestAoi?.distance)),
         township: asText(comp?.township),
-        street,
       }),
       city: cityText || asText(comp?.province),
     }
