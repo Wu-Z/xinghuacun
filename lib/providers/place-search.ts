@@ -16,7 +16,7 @@ export type PlaceHit = {
   address: string
   /** 高德底图的坐标，已是 GCJ-02。**不要再转一次** */
   point: LatLng
-  /** 高德的 POI 类型，只取第一段（「购物中心;商场」→「购物中心」） */
+  /** 高德的 POI 类型里**最具体的那一段**（「购物服务;商场;购物中心」→「购物中心」） */
   category: string
   /**
    * 营业状态。判不出来一律 unknown。
@@ -73,11 +73,23 @@ export function mapPlaceSearch(data: PoiSearchResponse, now: Date): PlaceHit[] {
     const name = asText(poi.name)
     if (!name) continue
 
+    /*
+     * 类型取**最后一段**，不取第一段。
+     *
+     * 高德的 type 由粗到细：「购物服务;商场;购物中心」。第一段是「购物服务」，
+     * 那是给统计用的分类，「购物服务」这四个字摆在用户面前等于没说
+     * （实测第一批结果里每条都写着「购物服务」）。最后一段才是这家店是什么。
+     */
+    const categories = asText(poi.type)
+      .split(';')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
     hits.push({
       name,
       address: asText(poi.address),
       point,
-      category: asText(poi.type).split(';')[0] ?? '',
+      category: categories[categories.length - 1] ?? '',
       openStatus: openStatusOf(poi, now),
     })
   }

@@ -10,7 +10,8 @@ function poi(over: Record<string, unknown> = {}) {
     name: '集美万达广场',
     address: '福建省厦门市集美区银江路 168 号',
     location: '118.097,24.573',
-    type: '购物中心;商场',
+    // 高德真实形状：由粗到细
+    type: '购物服务;商场;购物中心',
     ...over,
   }
 }
@@ -31,12 +32,20 @@ describe('mapPlaceSearch', () => {
     expect(hits.map((h) => h.name)).toEqual(['第一条', '第二条', '第三条'])
   })
 
-  it('坐标与地址摊平，类型只取第一段', () => {
+  it('坐标与地址摊平', () => {
     const [hit] = mapPlaceSearch({ pois: [poi()] }, NOON)
 
     expect(hit.point).toEqual({ lng: 118.097, lat: 24.573 })
     expect(hit.address).toBe('福建省厦门市集美区银江路 168 号')
-    expect(hit.category).toBe('购物中心')
+  })
+
+  it('类型取最具体的那一段 —— 第一段是「购物服务」，摆给用户看等于没说', () => {
+    expect(mapPlaceSearch({ pois: [poi()] }, NOON)[0].category).toBe('购物中心')
+
+    // 只有一段时就是它自己
+    expect(mapPlaceSearch({ pois: [poi({ type: '风景名胜' })] }, NOON)[0].category).toBe('风景名胜')
+    // 没有类型字段时留空，不编
+    expect(mapPlaceSearch({ pois: [poi({ type: [] })] }, NOON)[0].category).toBe('')
   })
 
   it('没有坐标的结果不发出去 —— 点了也落不了地', () => {
