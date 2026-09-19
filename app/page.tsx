@@ -1,15 +1,24 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ChipGroup from '@/components/ChipGroup'
 import MapCanvas from '@/components/MapCanvas'
 import SparkleIcon from '@/components/SparkleIcon'
+import WeatherBar from '@/components/WeatherBar'
+import WeatherOverlay from '@/components/WeatherOverlay'
 import { setPlan, usePlan, type PlanDraft } from '@/lib/client/plan-session'
+import { useWeather } from '@/lib/client/weather'
 import { toGcj02 } from '@/lib/core/coordinate'
 import type { LatLng, Preferences } from '@/lib/core/model'
 
 const GEO_TIMEOUT_MS = 5000
+
+/**
+ * 自动定位的等待上限。比手动点那次短：这一次是页面自己在跑，
+ * 不该让人对着空白的右上角干等。
+ */
+const AUTO_GEO_TIMEOUT_MS = 4000
 
 const EMPTY_PREFS: Preferences = {
   intents: [],
@@ -60,6 +69,9 @@ export default function Home() {
   const point: LatLng | null = edited?.point ?? saved?.point ?? null
   const label = edited?.label ?? saved?.label ?? ''
   const prefs = edited?.prefs ?? saved?.prefs ?? EMPTY_PREFS
+
+  // 天气跟着出发点走：定了在哪出发，才谈得上「那边现在什么天」
+  const weather = useWeather(point)
 
   const update = useCallback(
     (patch: Partial<PlanDraft>) => {
@@ -140,6 +152,68 @@ export default function Home() {
     )
   }, [update, namePlace])
 
+  /**
+   * 进首页就取一次位置 —— 「什么都不管」也要有天气。
+   *
+   * 天气是这一页的背景与右上角那两行信息，它必须**早于**用户的任何选择出现。
+   * 原来要等用户先点「用我的位置」才取，等于这条信息默认缺席。
+   *
+   * 三条约束，缺一不可：
+   * 1. **只自动尝试一次**（autoTried）。浏览器的权限弹窗不是能反复弹的东西，
+   *    被拒了就安静收场，出口留给「用我的位置」和「地图选点」；
+   * 2. **失败静默**。用户没主动要求过这件事，无端弹一句错误是骚扰 ——
+   *    手动点那次仍照常报错，因为那是他自己要的；
+   * 3. **不覆盖已有的出发点**。从结果页点「修改」回来时用户选过的点还在，
+   *    自动定位不该把他挪到别处去。
+   */
+  const autoTried = useRef(false)
+  useEffect(() => {
+    if (autoTried.current) return
+    autoTried.current = true
+
+    if (saved?.point) return
+    if (!navigator.geolocation) return
+
+    let expired = false
+    const timer = setTimeout(() => {
+      // 超时之后回调再来就当它没发生 —— 页面已经往下走了
+      expired = true
+    }, AUTO_GEO_TIMEOUT_MS)
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        clearTimeout(timer)
+        if (expired) return
+        // 浏览器给的是 WGS-84，必须先转成 GCJ-02，
+        // 否则会按偏了 100~700 米的位置去取天气
+        const point = toGcj02(
+          { lng: pos.coords.longitude, lat: pos.coords.latitude },
+          'geolocation',
+        )
+        // 函数式更新：定位返回的这几秒里用户可能已经自己选了点，他选的永远优先
+        setEdited((prev) => (prev?.point ? prev : { point, label: '当前位置', prefs: EMPTY_PREFS }))
+        // 名字随后补上。逆地理编码失败也只是显示「当前位置」，不影响天气
+        void namePlace(point)
+      },
+      () => {
+        clearTimeout(timer)
+      },
+      { timeout: AUTO_GEO_TIMEOUT_MS, enableHighAccuracy: false },
+    )
+    /*
+     * ★ 这里刻意**不返回 cleanup**。
+     *
+     * React 在开发模式下会把 effect 跑两遍（挂载 → 卸载 → 再挂载），
+     * 第一遍结束时 cleanup 会执行。若在 cleanup 里把「还活着」的标记置 false：
+     * 第一遍发出的定位结果会被丢掉，第二遍又被 autoTried 挡回去 ——
+     * 自动定位**永远不生效**。这个坑实测踩到了：data-weather 一直是 off、
+     * 出发点一直停在「还没选」，而页面上没有任何报错。
+     *
+     * 定位是一次幂等的只读查询，取消它没有任何意义。让它跑完，
+     * 回调里再判一次超时即可。
+     */
+  }, [saved, namePlace])
+
   const ready = point !== null
 
   const submit = () => {
@@ -154,20 +228,41 @@ export default function Home() {
   return (
     // 靠上排而不是垂直居中：整块内容浮在屏幕正中间时，
     // 上下各留一大片空白，标题也失去了「从上面开始读」的锚点
-    <main className="flex min-h-dvh justify-center bg-paper px-6 pb-16 pt-16 md:pt-24">
+    <main
+      // 天空出现 / 消失时，压在它上面的文字要跟着换色。开关放在页面根上，
+      // 由 CSS 统一接管，省得在每个元素里判一次 weather。
+      data-weather={weather ? 'on' : 'off'}
+      // 这里**不能**再写 bg-paper：天空层是 z-index:-1 的 fixed 元素，
+      // 铺在 body 底色之上、内容之下；父级一有不透明背景就会把它整片糊掉。
+      className="flex min-h-dvh justify-center px-6 pb-16 pt-16 md:pt-24"
+    >
+      {/*
+        蒙版挂在页面根的第一个子节点：它在 DOM 里先于所有内容，
+        作为 fixed 层铺在背景之上、肉眼之下 —— pointer-events 与透明度
+        的边界都写在 globals.css 的 .weather-sky 里。
+      */}
+      <WeatherOverlay weather={weather} />
       <div className="w-full max-w-[680px]">
-        <div className="text-[13.5px] font-semibold text-ink">周边去哪</div>
+        {/*
+          天气与品牌字同一行、靠右：它是这一页的**环境**，不是对某个输入的回答。
+          一进首页定位拿到就该出现，早于用户做出任何选择。
+          拿不到天气时 WeatherBar 整个不渲染，这一行就只剩品牌字，间距也不会变。
+        */}
+        <div className="flex items-start justify-between gap-6">
+          <div className="sky-ink text-[13.5px] font-semibold">周边去哪</div>
+          <WeatherBar weather={weather} />
+        </div>
 
         {/*
           标题写的是用户的问题，不是产品的名字。
           首页只做一件事：让人把「想怎么玩」说出口 —— 表单、参数、选项都往后排。
         */}
-        <h1 className="mt-4 text-[30px] font-semibold leading-[1.25] tracking-[-0.8px] text-ink">
+        <h1 className="sky-ink mt-4 text-[30px] font-semibold leading-[1.25] tracking-[-0.8px]">
           想去附近走走，
           <br />
           却不知道去哪好。
         </h1>
-        <p className="mt-3 text-sm leading-relaxed text-ink-3">
+        <p className="sky-ink-3 mt-3 text-sm leading-relaxed">
           说一句想怎么玩，我挑出真值得去的地方，并按最优顺序排好。
         </p>
 
@@ -177,7 +272,7 @@ export default function Home() {
           焦点态画在整张卡上（focus-within），不是画在里面的 textarea 上 ——
           输入区本身就是这张卡，方角的外框套在 22px 圆角里会错位。
         */}
-        <div className="mt-8 rounded-xl border border-line bg-surface transition-colors focus-within:border-jade focus-within:ring-[3px] focus-within:ring-jade-50">
+        <div className="sky-card mt-8 rounded-xl border border-line bg-surface transition-colors focus-within:border-jade focus-within:ring-[3px] focus-within:ring-jade-50">
           <textarea
             value={prefs.rawRequest}
             onChange={(e) => setPrefs({ ...prefs, rawRequest: e.target.value })}
@@ -236,6 +331,7 @@ export default function Home() {
               地图选点
             </button>
           </div>
+
         </div>
 
         {/* 这些参数对结果影响很大，但不该吓退第一次输入的人 —— 所以默认收起来 */}
@@ -243,7 +339,7 @@ export default function Home() {
           type="button"
           onClick={() => setMore((v) => !v)}
           aria-expanded={more}
-          className="mt-4 flex items-center gap-1.5 rounded-xs px-1 py-1 text-[13px] text-ink-3 transition-colors hover:text-ink"
+          className="sky-ink-3 mt-4 flex items-center gap-1.5 rounded-xs px-1 py-1 text-[13px] transition-colors"
         >
           <span className={`transition-transform ${more ? 'rotate-90' : ''}`} aria-hidden>
             ▸
@@ -254,7 +350,7 @@ export default function Home() {
         {more && (
           <div className="anim-fade mt-3 space-y-4 pl-5">
             <div className="flex items-center gap-3">
-              <div className="w-20 shrink-0 text-xs text-ink-3">同行人数</div>
+              <div className="sky-ink-3 w-20 shrink-0 text-xs">同行人数</div>
               <input
                 type="number"
                 min={1}
@@ -278,7 +374,7 @@ export default function Home() {
             />
 
             <div>
-              <div className="mb-2 text-xs text-ink-3">想去哪（可选）</div>
+              <div className="sky-ink-3 mb-2 text-xs">想去哪（可选）</div>
               <input
                 value={prefs.destination}
                 onChange={(e) => setPrefs({ ...prefs, destination: e.target.value })}
