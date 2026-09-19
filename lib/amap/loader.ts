@@ -21,8 +21,10 @@ export function loadAmap(): Promise<any> {
     serviceHost: `${window.location.origin}/_AMapService`,
   }
 
-  const key = process.env.NEXT_PUBLIC_AMAP_JS_KEY
-  if (!key) return Promise.reject(new Error('未配置 NEXT_PUBLIC_AMAP_JS_KEY'))
+  // 名字里没有 NEXT_PUBLIC_ 是故意的：这个值由 next.config.ts 的 env 段下发
+  // （Vercel 的环境变量面板不接受 NEXT_PUBLIC_ 开头的名字）。详见那里的注释。
+  const key = process.env.AMAP_JS_KEY
+  if (!key) return Promise.reject(new Error('未配置 AMAP_JS_KEY'))
 
   loading = import('@amap/amap-jsapi-loader')
     .then(({ default: AMapLoader }) =>

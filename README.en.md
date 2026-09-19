@@ -98,7 +98,7 @@ ROUTE_PROVIDER=mock
 | Variable | What it is for |
 | --- | --- |
 | `AMAP_WEB_SERVICE_KEY` | Server-side coordinates, straight-line distances, opening status, route planning, weather |
-| `NEXT_PUBLIC_AMAP_JS_KEY` | Renders the map in the browser; the key type must be "Web (JS API)" |
+| `AMAP_JS_KEY` | Renders the map in the browser; the key type must be "Web (JS API)". Handed to the client via the `env` block in `next.config.ts` |
 | `AMAP_JS_SECURITY_CODE` | Pairs with the map key above |
 | `DEEPSEEK_API_KEY` | Server-side calls to the recommendation model |
 | `DEEPSEEK_MODEL` | Model ID. Run `npm run models` first to see what your account can use — do not copy one blindly |
@@ -108,7 +108,7 @@ Then switch `RECOMMEND_PROVIDER` to `skill` to use real recommendations.
 **About keys:** they only need to go in `.env.local`, which is never committed. The
 `.env.example` in this repo holds **no secrets at all** — it is a template to copy, with
 every key field left empty and only a few non-sensitive defaults (concurrency limit, which
-provider to use, API base URL). Note that `NEXT_PUBLIC_AMAP_JS_KEY` does reach the browser,
+provider to use, API base URL). Note that `AMAP_JS_KEY` does reach the browser,
 so set up the domain allowlist on the Amap console for it.
 
 Without an Amap key, the map area reports a load failure; the list and the itinerary still work.

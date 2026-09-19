@@ -77,7 +77,7 @@ ROUTE_PROVIDER=mock
 | 变量 | 干什么用的 |
 | --- | --- |
 | `AMAP_WEB_SERVICE_KEY` | 服务端查坐标、直线距离、营业状态、规划路线、取天气 |
-| `NEXT_PUBLIC_AMAP_JS_KEY` | 在浏览器里渲染地图，类型要选「Web端(JS API)」 |
+| `AMAP_JS_KEY` | 在浏览器里渲染地图，类型要选「Web端(JS API)」。由 `next.config.ts` 的 `env` 段下发 |
 | `AMAP_JS_SECURITY_CODE` | 配合上面那个地图 Key |
 | `DEEPSEEK_API_KEY` | 服务端调用推荐模型 |
 | `DEEPSEEK_MODEL` | 模型 ID。先跑 `npm run models` 看你的账号能用哪些，别照抄 |
@@ -86,7 +86,7 @@ ROUTE_PROVIDER=mock
 
 **关于 Key：** 只需要填进 `.env.local`，它不会被提交。仓库里的 `.env.example` 里
 **没有任何密钥**——那是给人复制用的模板，密钥栏一律是空的，只有几个非敏感的默认值
-（并发上限、各 provider 的取值、接口地址）。其中 `NEXT_PUBLIC_AMAP_JS_KEY` 会进浏览器，
+（并发上限、各 provider 的取值、接口地址）。其中 `AMAP_JS_KEY` 会进浏览器，
 所以要按高德的要求配好域名白名单。
 
 没有高德 Key 时，地图那一块会提示加载失败，列表和行程照常能用。
