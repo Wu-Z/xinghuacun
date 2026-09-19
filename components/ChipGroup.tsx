@@ -14,7 +14,7 @@ type Props = {
 export default function ChipGroup({ label, options, selected, onToggle }: Props) {
   return (
     <div>
-      <div className="mb-2 text-xs text-ink-3">{label}</div>
+      <div className="sky-ink-3 mb-2 text-xs">{label}</div>
       <div className="flex flex-wrap gap-2">
         {options.map((o) => {
           const on = selected.includes(o)

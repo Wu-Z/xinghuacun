@@ -157,6 +157,764 @@ body {
 }
 
 /*
+ * ══ 天气 ══
+ *
+ * 这是「外面的天」，不是装饰。自下而上六层：
+ *
+ *   __sky    天空本体。垂直渐变，颜色由「天气类别 × 昼夜」共同决定。
+ *            **这一层是根** —— 没有它，上面那些雨丝就只是白纸上的灰条纹。
+ *            旧版的教训：先做了雨雪云光，唯独没做天，整层于是退化成
+ *            「一层会动的纹理」。
+ *   __cloud  云团。多云时是亮的絮，下雨时是压下来的暗团。
+ *   __rain   雨丝，远近两层。
+ *   __snow   雪，远近两层。
+ *   __sun    日光 / 月光的光斑与光泽。
+ *   __flash  闪电。
+ *
+ * 三条不可让的边界（改动前先读）：
+ *
+ *   pointer-events:none —— 任何装饰都不许吃掉一次点击。
+ *
+ *   满屏铺满 —— 天空必须铺满整个视口，**不做底部淡出**。
+ *            第一版让它从 88% 淡回纸白，81px 内从天空色冲到白，
+ *            在屏幕下方切出一条横带，整片天读起来是「一条横幅」。
+ *            苹果天气从不淡出 —— 天就是背景本身。
+ *
+ *   对比度 —— 渐变的**前 84% 都必须够深**。首页正文全压在这一段：
+ *            标题 15%、输入卡 30%、偏好按钮 46%、偏好面板 60%、面板底 73%。
+ *            91% 白的小字（最小 12px）在这段上实测 ≥ 4.5:1。
+ *
+ * 三条配色的纪律：
+ *   1. 天空**允许有颜色**（它本来就是天气），但「深」是硬约束 ——
+ *      晴天不能为了好看去挑一张浅蓝，浅蓝上压不住白字。
+ *   2. 好看的部分（地平线辉光 / 黄昏暖橙）只留最后 16%。早先版本从 58%
+ *      开始淡出，70% 处的背景被混进 12% 的纸白，白字对比度从 4.6 掉到 3.8 ——
+ *      偏好面板展开后正好落在那。内容最深到约 660px（73%），
+ *      所以 84% 之前必须一律压深。
+ *   3. 亮度曲线服从内容分布，不是服从「天空该怎么好看」。
+ */
+.weather-sky {
+  position: fixed;
+  inset: 0;
+  /*
+   * 必须是负值。
+   * 它是「背景」，但 position:fixed 让它成了**定位元素**（层叠第 6 层），
+   * 会盖在所有没有定位的静态内容（第 3 层）之上 —— 一整片不透明的天铺上去，
+   * 标题和输入卡会被整片埋掉（这个坑踩过一次）。
+   * z-index:-1 把它压回内容之下，同时仍在 body 底色之上，
+   * 所以**父级不能有不透明背景**（见 app/page.tsx 里 main 的注释）。
+   */
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  animation: xhc-sky-in 700ms ease-out;
+}
+
+@keyframes xhc-sky-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.weather-sky > span {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+/* 天空本体每类天气都有，所以单独放行 */
+.weather-sky > .weather-sky__sky {
+  display: block;
+}
+
+/*
+ * 雨和雪是整层倾斜的，倾斜会把四角转到容器外 —— 这两层铺得比容器大一圈。
+ * 用子选择器压过上面那条的 inset:0，别让它被吃掉。
+ */
+.weather-sky > .weather-sky__rain,
+.weather-sky > .weather-sky__snow {
+  inset: -30%;
+}
+
+/* ── 天空配色 ──────────────────────────────────────────────
+ * 顺序即优先级：先通用、后具体（靠特异性 + 源码更靠后胜出）。
+ *
+ * 亮度曲线的纪律：前 84% 都是「内容区」，必须够深；好看的部分
+ * （地平线辉光、黄昏的暖橙）全放在最后 16%。这不是审美取舍，
+ * 是白字 4.5:1 的硬下限 —— 见 scripts 里的对比度实测。
+ */
+.weather-sky[data-kind="sun"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #06293f 0%,
+    #0b4066 20%,
+    #10537c 44%,
+    #166691 66%,
+    #1f77a3 84%,
+    #4b9dc4 94%,
+    #8ec4dd 100%
+  );
+}
+
+.weather-sky[data-kind="sun"][data-day="dusk"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #101c38 0%,
+    #26264c 20%,
+    #45345c 42%,
+    #6b3f5c 62%,
+    #964e56 82%,
+    #c76f4e 93%,
+    #efa76b 100%
+  );
+}
+
+.weather-sky[data-kind="sun"][data-day="night"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #03060c 0%,
+    #070e1a 26%,
+    #0b1727 54%,
+    #122137 80%,
+    #1d3350 100%
+  );
+}
+
+.weather-sky[data-kind="cloud"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #1a2c3c 0%,
+    #24384a 22%,
+    #2f4658 46%,
+    #3b5468 68%,
+    #4a667a 86%,
+    #6d8798 100%
+  );
+}
+
+.weather-sky[data-kind="cloud"][data-day="dusk"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #1c2338 0%,
+    #2e3048 22%,
+    #45394f 46%,
+    #5d4352 68%,
+    #7b5050 86%,
+    #a0694f 100%
+  );
+}
+
+.weather-sky[data-kind="cloud"][data-day="night"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #05080f 0%,
+    #090f19 26%,
+    #0e1724 54%,
+    #141f2f 80%,
+    #1e2c3f 100%
+  );
+}
+
+.weather-sky[data-kind="rain"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #101c28 0%,
+    #16283a 22%,
+    #1d3448 46%,
+    #253f55 68%,
+    #2e4d65 86%,
+    #456a83 100%
+  );
+}
+
+.weather-sky[data-kind="rain"][data-day="dusk"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #0f1424 0%,
+    #1b1b32 22%,
+    #2a2340 46%,
+    #3b2945 68%,
+    #513245 86%,
+    #734350 100%
+  );
+}
+
+.weather-sky[data-kind="rain"][data-day="night"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #04070c 0%,
+    #070d16 26%,
+    #0b1420 54%,
+    #101b2a 80%,
+    #182638 100%
+  );
+}
+
+.weather-sky[data-kind="rain"][data-thunder="on"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #080f16 0%,
+    #0d1720 22%,
+    #131f2b 46%,
+    #192836 68%,
+    #213343 86%,
+    #33485c 100%
+  );
+}
+
+.weather-sky[data-kind="rain"][data-day="night"][data-thunder="on"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #020508 0%,
+    #050a10 26%,
+    #08101a 54%,
+    #0c1622 80%,
+    #131f2e 100%
+  );
+}
+
+.weather-sky[data-kind="snow"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #202d36 0%,
+    #2a3a44 22%,
+    #354751 46%,
+    #405560 68%,
+    #4d6471 86%,
+    #6e818e 100%
+  );
+}
+
+.weather-sky[data-kind="snow"][data-day="dusk"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #1e2634 0%,
+    #2b2d42 22%,
+    #393449 46%,
+    #483c4f 68%,
+    #584658 86%,
+    #775e6b 100%
+  );
+}
+
+.weather-sky[data-kind="snow"][data-day="night"] .weather-sky__sky {
+  background-image: linear-gradient(
+    180deg,
+    #04080d 0%,
+    #080f16 26%,
+    #0d1620 54%,
+    #121d2a 80%,
+    #192737 100%
+  );
+}
+
+/* ── 显隐 ────────────────────────────────────────────────── */
+
+.weather-sky[data-kind="sun"] .weather-sky__sun,
+.weather-sky[data-kind="sun"] .weather-sky__glare {
+  display: block;
+}
+
+.weather-sky[data-kind="cloud"] .weather-sky__cloud--far,
+.weather-sky[data-kind="cloud"] .weather-sky__cloud--near,
+.weather-sky[data-kind="rain"] .weather-sky__cloud--far,
+.weather-sky[data-kind="rain"] .weather-sky__cloud--near,
+.weather-sky[data-kind="snow"] .weather-sky__cloud--far,
+.weather-sky[data-kind="snow"] .weather-sky__cloud--near {
+  display: block;
+}
+
+.weather-sky[data-kind="rain"] .weather-sky__rain--far,
+.weather-sky[data-kind="rain"] .weather-sky__rain--near {
+  display: block;
+}
+
+.weather-sky[data-kind="snow"] .weather-sky__snow--far,
+.weather-sky[data-kind="snow"] .weather-sky__snow--near {
+  display: block;
+}
+
+/*
+ * 闪电。
+ *
+ * 这里曾经漏掉一条 display —— 只写了 animation，元素却还是 display:none，
+ * 于是「雷阵雨从不打闪」，而且不报错、不显形，静默失效。
+ * 显隐和动画是两件事，缺一不可。
+ */
+.weather-sky[data-thunder="on"] .weather-sky__flash {
+  display: block;
+  animation: xhc-lightning 19s linear infinite;
+}
+
+/* ── 云 ────────────────────────────────────────────────────
+ * 用 radial-gradient 而不是位图：云是可缩放的形态，位图放大就露馅。
+ * 远层大而淡、走得慢；近层小而实、走得快。速度差就是厚度 ——
+ * 两层同速会退化成整体平移，看着像一张纸在滑。
+ *
+ * ══ 为什么有 filter: blur() ══
+ *
+ * 上一版的云是「一颗颗独立可见的浅色椭圆」，像贴上去的灰药丸。
+ * 根因不是参数没调好，是方法不对：一堆各自独立的 radial-gradient 椭圆，
+ * 边界彼此不相交，**永远不会融成一朵云**。云恰恰是靠多个团块融合出来的。
+ * CSS 里没有别的东西能替代模糊这一步。
+ *
+ * ══ 两个必须连带处理的坑 ══
+ *
+ *   1. inset 必须带子选择器。
+ *      `.weather-sky__cloud--far { inset: -80px }` 的特异性是 (0,1,0)，
+ *      而基础规则 `.weather-sky > span { inset: 0 }` 是 (0,1,1) ——
+ *      **输在特异性上，跟源码顺序完全无关**。必须写成
+ *      `.weather-sky > .weather-sky__cloud--far` (0,2,1) 才压得住。
+ *      这个坑已经踩过两次了，改这三行之前先想清楚。
+ *
+ *   2. 外扩 80px 的用途。
+ *      blur 会往包围盒外溢出（滤镜区域默认 ±10%），元素若正好等于视口，
+ *      四条边就会被「混进透明」削出一圈 ~18px 的软边 —— 看起来像给天空
+ *      套了个框。80px 远大于 18px，把软边推到视口之外。
+ *
+ *   3. 位置与尺寸都做过坐标映射。
+ *      元素比视口大 160px，百分比不再等价：
+ *        ex = (sx·1440 + 80) / 1600
+ *      下面每个数字都是映射后的结果，直接照抄屏幕上的百分比会错位。
+ *
+ * ══ 渐变的形状：柔核 + 外圈淡出 ══
+ *
+ * 两个失败过的写法，都记下来：
+ *   · 纯斜坡（peak 只在圆心那一个点）：平均 alpha 只剩标称值的三成，
+ *     加 blur 摊薄后整朵云消失 —— 第三版第一稿就是这么翻车的；
+ *   · 平顶核心（0%–40% 是同一个 α）：那是一枚**半透明圆盘**，没有体积感，
+ *     叠上 blur 就是一片均匀的雾 —— 第二版一直是这样，云始终「糊」。
+ * 现在从圆心就开始连续下降，但把大部分降幅压在外圈（42%→100%）：
+ * 既饱满又有形，边界仍然交给 blur 收。
+ *
+ * blur 半径同时从 30/38px 降到 14/18px。原来的值是按 1440px 宽度随手定的，
+ * 而云 blob 的 y 半径只有 8–12%（72–108px）—— 在较短的那根轴上糊掉三成，
+ * 形状必然化开。blur 只需要够把相邻团块的边界揉在一起，不需要更大。
+ *
+ * ══ 一条硬纪律：白字压在深天上 ══
+ *
+ * 安全区是横向 19%–74%、纵向 0–55%（h1、副标题、输入卡、偏好按钮，
+ * 以及右上角那两行天气）。实测 snow/day 在 15% 高处，累积白色 alpha
+ * 超过 0.33 就跌破 4.5:1（0.4 时只剩 3.70）。所以强云的平顶区全部
+ * 安排在 x < 19%、x > 74%，或下半部（y > 55%）；安全区内只留淡絮。
+ *
+ * 右边界从 55% 改成 74%，是因为天气从输入卡里搬到了右上角（62.5%–73.8%）——
+ * 而云的「主角位」当初正是按「55% 以右空着」排的，一搬就压在自家字上，
+ * 实测只剩 2.28:1。**新增文字时务必回头检查天空层的每一条假设。**
+ *
+ * 暗云不受这条约束 —— 它只会压暗，压暗对白字是加分。
+ */
+.weather-sky > .weather-sky__cloud--far,
+.weather-sky > .weather-sky__cloud--near {
+  inset: -80px;
+}
+
+.weather-sky__cloud--far {
+  background-image:
+    radial-gradient(10.8% 6.79% at 84.2% 19.434%, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.361) 42%, rgba(255, 255, 255, 0.176) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(14.4% 7.64% at 90.5% 36.415%, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.344) 42%, rgba(255, 255, 255, 0.168) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(16.2% 8.49% at 82.4% 56.792%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.327) 42%, rgba(255, 255, 255, 0.16) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(14.4% 7.64% at 12.2% 21.132%, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.31) 42%, rgba(255, 255, 255, 0.151) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(16.2% 8.49% at 8.6% 44.906%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.327) 42%, rgba(255, 255, 255, 0.16) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(19.8% 8.49% at 14.0% 70.377%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.327) 42%, rgba(255, 255, 255, 0.16) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(27.0% 10.19% at 37.4% 66.981%, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.361) 42%, rgba(255, 255, 255, 0.176) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(27.0% 9.34% at 62.6% 78.868%, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.344) 42%, rgba(255, 255, 255, 0.168) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(19.8% 8.49% at 87.8% 72.075%, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.31) 42%, rgba(255, 255, 255, 0.151) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(23.4% 6.79% at 30.2% 14.34%, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.103) 42%, rgba(255, 255, 255, 0.05) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(23.4% 6.79% at 46.4% 33.019%, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.095) 42%, rgba(255, 255, 255, 0.046) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(21.6% 6.79% at 60.8% 45.755%, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.086) 42%, rgba(255, 255, 255, 0.042) 72%, rgba(255, 255, 255, 0) 100%);
+  filter: blur(14px);
+  animation: xhc-cloud-far 260s ease-in-out infinite alternate;
+}
+
+.weather-sky__cloud--near {
+  background-image:
+    radial-gradient(12.6% 6.79% at 86.0% 26.226%, rgba(255, 255, 255, 0.48) 0%, rgba(255, 255, 255, 0.413) 42%, rgba(255, 255, 255, 0.202) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(16.2% 7.64% at 91.4% 51.698%, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.344) 42%, rgba(255, 255, 255, 0.168) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(19.8% 8.49% at 77.0% 68.679%, rgba(255, 255, 255, 0.44) 0%, rgba(255, 255, 255, 0.378) 42%, rgba(255, 255, 255, 0.185) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(16.2% 7.64% at 10.4% 60.189%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.327) 42%, rgba(255, 255, 255, 0.16) 72%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(21.6% 7.64% at 24.8% 83.962%, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.292) 42%, rgba(255, 255, 255, 0.143) 72%, rgba(255, 255, 255, 0) 100%);
+  filter: blur(18px);
+  animation: xhc-cloud-near 155s ease-in-out infinite alternate;
+}
+
+/*
+ * 雨天换皮肤：一片从**天顶压下来**的云堤，云底勾一道冷色亮边。
+ *
+ * 为什么是「天顶压暗」而不是几朵云：真实的雨天本来就是整片云层压顶，
+ * 几朵飘着的孤云读起来是「多云」。而且压顶的暗色天然落在屏幕上半部，
+ * 正好避开正文所在的中间带，对比度只赚不亏。
+ *
+ * 那道 rgba(190,214,234,0.09~0.13) 的亮边是关键 —— 没有它，暗云就是一块
+ * 纯粹的暗，读者根本看不出「这里有云」。明暗交界才给得出形体。
+ */
+.weather-sky[data-kind="rain"] .weather-sky__cloud--far {
+  background-image:
+    radial-gradient(41.4% 16.13% at 14.0% 5.0%, rgba(3, 7, 12, 0.62) 0%, rgba(3, 7, 12, 0.62) 40%, rgba(3, 7, 12, 0) 100%),
+    radial-gradient(46.8% 17.83% at 50.0% 10.094%, rgba(3, 7, 12, 0.54) 0%, rgba(3, 7, 12, 0.54) 40%, rgba(3, 7, 12, 0) 100%),
+    radial-gradient(36.0% 14.43% at 86.0% 2.453%, rgba(3, 7, 12, 0.48) 0%, rgba(3, 7, 12, 0.48) 40%, rgba(3, 7, 12, 0) 100%),
+    radial-gradient(36.0% 11.89% at 64.4% 24.528%, rgba(3, 7, 12, 0.34) 0%, rgba(3, 7, 12, 0.34) 40%, rgba(3, 7, 12, 0) 100%),
+    radial-gradient(27.0% 5.09% at 71.6% 29.623%, rgba(190, 214, 234, 0.13) 0%, rgba(190, 214, 234, 0) 100%),
+    radial-gradient(23.4% 4.25% at 51.8% 34.717%, rgba(190, 214, 234, 0.1) 0%, rgba(190, 214, 234, 0) 100%),
+    radial-gradient(19.8% 4.25% at 17.6% 33.019%, rgba(190, 214, 234, 0.09) 0%, rgba(190, 214, 234, 0) 100%);
+}
+
+.weather-sky[data-kind="rain"] .weather-sky__cloud--near {
+  background-image:
+    radial-gradient(27.0% 9.34% at 26.6% 35.566%, rgba(3, 7, 12, 0.46) 0%, rgba(3, 7, 12, 0.46) 40%, rgba(3, 7, 12, 0) 100%),
+    radial-gradient(30.6% 10.19% at 66.2% 43.208%, rgba(3, 7, 12, 0.4) 0%, rgba(3, 7, 12, 0.4) 40%, rgba(3, 7, 12, 0) 100%),
+    radial-gradient(23.4% 7.64% at 46.4% 22.83%, rgba(3, 7, 12, 0.36) 0%, rgba(3, 7, 12, 0.36) 40%, rgba(3, 7, 12, 0) 100%),
+    radial-gradient(25.2% 8.49% at 89.6% 56.792%, rgba(3, 7, 12, 0.3) 0%, rgba(3, 7, 12, 0.3) 40%, rgba(3, 7, 12, 0) 100%),
+    radial-gradient(23.4% 7.64% at 12.2% 63.585%, rgba(3, 7, 12, 0.26) 0%, rgba(3, 7, 12, 0.26) 40%, rgba(3, 7, 12, 0) 100%),
+    radial-gradient(23.4% 5.09% at 41.0% 48.302%, rgba(190, 214, 234, 0.11) 0%, rgba(190, 214, 234, 0) 100%);
+}
+
+@keyframes xhc-cloud-far {
+  from {
+    transform: translate3d(-4%, 0.6%, 0);
+  }
+  to {
+    transform: translate3d(4%, -0.6%, 0);
+  }
+}
+
+@keyframes xhc-cloud-near {
+  from {
+    transform: translate3d(-6%, -1%, 0);
+  }
+  to {
+    transform: translate3d(6%, 1%, 0);
+  }
+}
+
+/* ── 光 ────────────────────────────────────────────────────
+ * 晴朗时的光斑与光泽。
+ *
+ * 旋转只作用于光泽层、且旋转中心钉在光斑自己身上 —— 旋转整个元素会让
+ * 光斑绕着屏幕中心兜圈子（150 秒一圈，等于一团光在页面上慢慢乱跑）。
+ *
+ * 光泽层旧版用 conic-gradient 旋转，还会在右上角**切出一块深色三角**：
+ * 圆锥渐变从圆心扫一圈，方形元素一转就有边角转进画面，看着像屏幕破了。
+ * 现在改成一片不动的柔光，只负责把光晕铺开，动交给 __sun 的呼吸。
+ *
+ * 第一版的太阳只有 0.34 的单一光晕，实测「几乎看不出来」。真正的太阳是
+ * **两级**的：一个过曝的小核心 + 一大圈很淡的散射。核心给「亮」，散射给「暖」，
+ * 缺一个都只剩一团模糊的橙色。
+ *
+ * 光的圆心钉在 82% 3%（右上），离正文栏（x ≈ 26%–73%）有距离，
+ * 所以再亮也不咬对比度。
+ */
+.weather-sky__sun {
+  background-image:
+    radial-gradient(
+      circle 110px at 82% 3%,
+      rgba(255, 250, 236, 0.92) 0%,
+      rgba(255, 238, 198, 0.5) 38%,
+      rgba(255, 222, 166, 0) 72%
+    ),
+    radial-gradient(
+      circle 460px at 82% 3%,
+      rgba(255, 224, 170, 0.26) 0%,
+      rgba(255, 214, 150, 0.12) 40%,
+      rgba(255, 210, 150, 0) 74%
+    );
+  animation: xhc-sun-breathe 26s ease-in-out infinite alternate;
+}
+
+@keyframes xhc-sun-breathe {
+  from {
+    transform: scale(1);
+    opacity: 0.82;
+  }
+  to {
+    transform: scale(1.07);
+    opacity: 1;
+  }
+}
+
+.weather-sky__glare {
+  background-image: radial-gradient(
+    58% 46% at 84% 0%,
+    rgba(255, 236, 200, 0.18),
+    rgba(255, 236, 200, 0) 70%
+  );
+}
+
+/* ── 光源按昼夜分派 ────────────────────────────────────────
+ * 上面那条 .weather-sky__sun 是**白天**的太阳，也是默认形态。
+ * 黄昏和夜间各自改写，理由：
+ *
+ *   黄昏 —— 太阳悬在头顶的黄昏不成立。太阳必须落到地平线附近（76% 68%），
+ *          才和底部那片橙红的天光对得上。光心仍然远离文字栏（19%–55%）。
+ *
+ *   夜间 —— 夜里挂一团暖橙光，读起来是「路灯」不是「月亮」。
+ *          换成小而冷白的月盘，并且**停掉呼吸动画**：月亮不会脉动。
+ */
+.weather-sky[data-kind="sun"][data-day="dusk"] .weather-sky__sun {
+  background-image:
+    radial-gradient(
+      circle 130px at 76% 68%,
+      rgba(255, 250, 236, 0.9) 0%,
+      rgba(255, 226, 168, 0.46) 40%,
+      rgba(255, 205, 140, 0) 74%
+    ),
+    radial-gradient(
+      circle 520px at 76% 68%,
+      rgba(255, 206, 150, 0.3) 0%,
+      rgba(255, 190, 130, 0.14) 42%,
+      rgba(255, 180, 120, 0) 76%
+    );
+}
+
+.weather-sky[data-kind="sun"][data-day="dusk"] .weather-sky__glare {
+  background-image: radial-gradient(
+    62% 50% at 78% 64%,
+    rgba(255, 214, 160, 0.2),
+    rgba(255, 214, 160, 0) 72%
+  );
+}
+
+.weather-sky[data-kind="sun"][data-day="night"] .weather-sky__sun {
+  background-image:
+    radial-gradient(
+      circle 62px at 80% 12%,
+      rgba(238, 244, 253, 0.95) 0%,
+      rgba(214, 228, 248, 0.4) 44%,
+      rgba(200, 216, 240, 0) 76%
+    ),
+    radial-gradient(
+      circle 340px at 80% 12%,
+      rgba(190, 212, 244, 0.18) 0%,
+      rgba(180, 205, 240, 0) 76%
+    );
+  /* 月亮不呼吸。注意这条不会被 reduced-motion 那条 !important 覆盖 —— 
+     那条是「停掉运动」，这条是「本来就没有运动」，方向一致，不冲突。 */
+  animation: none;
+}
+
+.weather-sky[data-kind="sun"][data-day="night"] .weather-sky__glare {
+  background-image: radial-gradient(
+    50% 40% at 82% 6%,
+    rgba(206, 224, 250, 0.14),
+    rgba(206, 224, 250, 0) 70%
+  );
+}
+
+/* ── 雨 ────────────────────────────────────────────────────
+ * 「斜」只能让整层旋转来给，不能交给动画：图案是平铺的，横向位移
+ * 只要不是 tile 宽度的整数倍，循环处就会跳一下；一旦取到整数倍又等于没动。
+ * 所以动画只管竖直下落，位移量正好等于一个 tile 高，循环完全无缝。
+ *
+ * 第一版的雨「像撒了一把短横线」，三个原因叠在一起：
+ *   1. 线段只有 55/80px 长 —— 不足以读成「一条雨丝」，只够读成一段短划。
+ *   2. 线宽 1.2/1.9px 配 round 端头 —— 短线段被端头圆角撑成一颗颗小胶囊。
+ *   3. **跨 tile 边界的线段没有回绕**，被边界齐齐切平，每 360/420px
+ *      在屏幕上留下一道「雨丝断带」。
+ * 现在：长度 74–190px、线宽 1.0/1.35px、端头改 butt、跨边界回绕。
+ * 透明度反而压低了 —— 雨丝的「密」应该来自线更多，不是每条更实。
+ */
+.weather-sky__rain--far {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20180%20320%27%20width%3D%27180%27%20height%3D%27320%27%3E%3Cline%20x1%3D%22114.0%22%20y1%3D%2244.6%22%20x2%3D%22114.0%22%20y2%3D%22157.3%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.111%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%22178.0%22%20y1%3D%22128.7%22%20x2%3D%22178.0%22%20y2%3D%22239.5%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.107%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%2210.0%22%20y1%3D%2229.7%22%20x2%3D%2210.0%22%20y2%3D%22106.8%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.086%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%2257.2%22%20y1%3D%227.5%22%20x2%3D%2257.2%22%20y2%3D%22127.3%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.085%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%22121.3%22%20y1%3D%22-11.3%22%20x2%3D%22121.3%22%20y2%3D%2286.7%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.094%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%22121.3%22%20y1%3D%22308.7%22%20x2%3D%22121.3%22%20y2%3D%22406.7%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.094%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%224.2%22%20y1%3D%22171.9%22%20x2%3D%224.2%22%20y2%3D%22285.5%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.113%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%2258.5%22%20y1%3D%2232.5%22%20x2%3D%2258.5%22%20y2%3D%22111.2%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.12%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%222.4%22%20y1%3D%2282.8%22%20x2%3D%222.4%22%20y2%3D%22166.8%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.118%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%22130.4%22%20y1%3D%2281.3%22%20x2%3D%22130.4%22%20y2%3D%22172.8%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.115%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%22123.1%22%20y1%3D%22181.6%22%20x2%3D%22123.1%22%20y2%3D%22276.0%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.116%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%2240.4%22%20y1%3D%2226.4%22%20x2%3D%2240.4%22%20y2%3D%22103.7%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.116%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%2233.2%22%20y1%3D%22-40.8%22%20x2%3D%2233.2%22%20y2%3D%2254.4%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.116%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%2233.2%22%20y1%3D%22279.2%22%20x2%3D%2233.2%22%20y2%3D%22374.4%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.116%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%2239.5%22%20y1%3D%22-7.3%22%20x2%3D%2239.5%22%20y2%3D%2275.6%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.114%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%2239.5%22%20y1%3D%22312.7%22%20x2%3D%2239.5%22%20y2%3D%22395.6%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.114%22%20stroke-width%3D%221.0%22%2F%3E%3Cline%20x1%3D%2285.6%22%20y1%3D%22176.2%22%20x2%3D%2285.6%22%20y2%3D%22291.3%22%20stroke%3D%22rgb%28232%2C242%2C250%29%22%20stroke-opacity%3D%220.115%22%20stroke-width%3D%221.0%22%2F%3E%3C%2Fsvg%3E");
+  background-size: 180px 320px;
+  transform: rotate(13deg);
+  animation: xhc-rain-far var(--rain-far-dur, 1.6s) linear infinite;
+}
+
+@keyframes xhc-rain-far {
+  to {
+    transform: rotate(13deg) translate3d(0, 320px, 0);
+  }
+}
+
+.weather-sky__rain--near {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20240%20400%27%20width%3D%27240%27%20height%3D%27400%27%3E%3Cline%20x1%3D%22233.6%22%20y1%3D%22186.1%22%20x2%3D%22233.6%22%20y2%3D%22318.5%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.124%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2272.6%22%20y1%3D%22142.2%22%20x2%3D%2272.6%22%20y2%3D%22274.0%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.156%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%22224.3%22%20y1%3D%2213.8%22%20x2%3D%22224.3%22%20y2%3D%22183.4%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.157%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2218.9%22%20y1%3D%22123.1%22%20x2%3D%2218.9%22%20y2%3D%22298.3%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.148%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2273.8%22%20y1%3D%22-104.6%22%20x2%3D%2273.8%22%20y2%3D%2265.2%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.144%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2273.8%22%20y1%3D%22295.4%22%20x2%3D%2273.8%22%20y2%3D%22465.2%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.144%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2252.0%22%20y1%3D%2281.1%22%20x2%3D%2252.0%22%20y2%3D%22214.5%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.144%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2211.2%22%20y1%3D%22-13.9%22%20x2%3D%2211.2%22%20y2%3D%22136.9%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.17%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2211.2%22%20y1%3D%22386.1%22%20x2%3D%2211.2%22%20y2%3D%22536.9%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.17%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2221.2%22%20y1%3D%2231.7%22%20x2%3D%2221.2%22%20y2%3D%22175.9%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.12%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2216.4%22%20y1%3D%22130.9%22%20x2%3D%2216.4%22%20y2%3D%22266.0%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.122%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%22135.7%22%20y1%3D%22222.6%22%20x2%3D%22135.7%22%20y2%3D%22350.2%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.134%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2268.9%22%20y1%3D%22127.2%22%20x2%3D%2268.9%22%20y2%3D%22265.5%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.141%22%20stroke-width%3D%221.35%22%2F%3E%3Cline%20x1%3D%2231.2%22%20y1%3D%2278.4%22%20x2%3D%2231.2%22%20y2%3D%22258.3%22%20stroke%3D%22rgb%28242%2C249%2C255%29%22%20stroke-opacity%3D%220.127%22%20stroke-width%3D%221.35%22%2F%3E%3C%2Fsvg%3E");
+  background-size: 240px 400px;
+  transform: rotate(13deg);
+  animation: xhc-rain-near var(--rain-near-dur, 1s) linear infinite;
+}
+
+@keyframes xhc-rain-near {
+  to {
+    transform: rotate(13deg) translate3d(0, 400px, 0);
+  }
+}
+
+/*
+ * 雨的大小靠**速度**和**浓度**表达，不靠密度：
+ * 这个透明度下格子疏密的差别肉眼分不出来，但快慢一眼就有数。
+ * 小雨把浓度压到 0.65 也是必要的 —— 稀稀拉拉的细雨不该和暴雨一样实。
+ */
+.weather-sky[data-level="1"] .weather-sky__rain {
+  opacity: 0.65;
+  --rain-far-dur: 2.4s;
+  --rain-near-dur: 1.5s;
+}
+
+.weather-sky[data-level="3"] .weather-sky__rain {
+  opacity: 1;
+  --rain-far-dur: 1.1s;
+  --rain-near-dur: 0.68s;
+}
+
+/* ── 雪 ────────────────────────────────────────────────────
+ * 同雨：两层点阵，远的慢、近的快，整层倾斜 7° 得到斜落。
+ * 速度调过两轮 —— 旧版 96px/46s 约等于静止，看着像屏幕上的灰尘。
+ */
+/*
+ * 雪的图案用 CSS 的**多层 radial-gradient**画，不用 SVG 圆点。
+ *
+ * 原因：data URI 里的 <circle> 是硬边的，抗锯齿还会在深底上渗出青蓝色边 ——
+ * 一堆硬边小圆看起来是「屏幕上的坏点」，不是雪。雪花是失焦的。
+ * radial-gradient 天生带柔和过渡，而且一层就是一个点，改起来直观。
+ *
+ * 密度与尺寸是两轮调出来的：远层小而密、近层大而疏，
+ * 靠**尺寸差**做纵深，而不是靠「点更多」—— 点压满整屏时，
+ * 读起来是噪点不是天气。
+ */
+.weather-sky__snow--far {
+  background-image:
+    radial-gradient(circle 1.81px at 11.7% 13.5%, rgba(255, 255, 255, 0.267), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 1.86px at 44.9% 11.9%, rgba(255, 255, 255, 0.251), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 1.85px at 62.6% 14.0%, rgba(255, 255, 255, 0.253), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 1.82px at 82.0% 12.7%, rgba(255, 255, 255, 0.222), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.2px at 14.8% 42.6%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.09px at 30.4% 34.1%, rgba(255, 255, 255, 0.257), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 1.72px at 55.3% 42.9%, rgba(255, 255, 255, 0.218), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 1.7px at 90.9% 29.5%, rgba(255, 255, 255, 0.206), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.04px at 20.9% 70.6%, rgba(255, 255, 255, 0.232), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.09px at 40.2% 64.5%, rgba(255, 255, 255, 0.231), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.17px at 56.5% 54.0%, rgba(255, 255, 255, 0.268), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 1.5px at 88.0% 54.8%, rgba(255, 255, 255, 0.217), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.14px at 7.1% 83.0%, rgba(255, 255, 255, 0.238), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.19px at 29.3% 86.9%, rgba(255, 255, 255, 0.232), rgba(255, 255, 255, 0) 70%);
+  background-size: 300px 300px;
+  transform: rotate(7deg);
+  animation: xhc-snow-far 8s linear infinite;
+}
+
+@keyframes xhc-snow-far {
+  to {
+    transform: rotate(7deg) translate3d(0, 300px, 0);
+  }
+}
+
+.weather-sky__snow--near {
+  background-image:
+    radial-gradient(circle 3.18px at 17.8% 13.1%, rgba(255, 255, 255, 0.334), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.74px at 58.0% 11.7%, rgba(255, 255, 255, 0.332), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.93px at 83.6% 13.0%, rgba(255, 255, 255, 0.375), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 3.05px at 14.7% 61.1%, rgba(255, 255, 255, 0.304), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 3.14px at 40.8% 48.7%, rgba(255, 255, 255, 0.316), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 3.01px at 76.9% 46.5%, rgba(255, 255, 255, 0.306), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 2.93px at 28.3% 79.4%, rgba(255, 255, 255, 0.374), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 3.01px at 52.5% 81.5%, rgba(255, 255, 255, 0.37), rgba(255, 255, 255, 0) 70%);
+  background-size: 260px 260px;
+  transform: rotate(7deg);
+  animation: xhc-snow-near 6s linear infinite;
+}
+
+@keyframes xhc-snow-near {
+  to {
+    transform: rotate(7deg) translate3d(0, 260px, 0);
+  }
+}
+
+/* ── 闪电 ──────────────────────────────────────────────────
+ * 周期 19 秒、单次不到 0.4 秒的两次亮度上抬 —— 要的是「远处在打闪」，
+ * 不是「屏幕坏了」。它也在 mask 之内，所以亮起来的是上半屏。
+ */
+.weather-sky__flash {
+  background-color: rgba(226, 236, 246, 0.5);
+  opacity: 0;
+}
+
+@keyframes xhc-lightning {
+  0%,
+  90%,
+  100% {
+    opacity: 0;
+  }
+  91% {
+    opacity: 0.3;
+  }
+  91.6% {
+    opacity: 0;
+  }
+  92.6% {
+    opacity: 0.2;
+  }
+  93.2% {
+    opacity: 0;
+  }
+}
+
+/* ── 天空上的文字 ──────────────────────────────────────────
+ * 天是深的，正文就得翻白。但不能在天气还没到时也白 —— 那时底色是纸白。
+ * 所以颜色挂在页面根的 [data-weather] 上，由页面统一开关，
+ * 并跟着天空一起渐变（天空淡入 700ms，文字不能比它先跳）。
+ *
+ * 三级层次在这层靠**字号与字重**做，不靠颜色深浅：
+ * 白字压在深天上，往下降透明度会迅速跌破 4.5:1。
+ */
+.sky-ink,
+.sky-ink-3 {
+  transition: color 500ms ease-out;
+}
+
+.sky-ink {
+  color: var(--color-ink);
+}
+
+.sky-ink-3 {
+  color: var(--color-ink-3);
+}
+
+[data-weather="on"] .sky-ink {
+  color: #ffffff;
+}
+
+[data-weather="on"] .sky-ink-3 {
+  color: rgba(255, 255, 255, 0.91);
+}
+
+/* 悬停时提亮，而不是提暗 —— 深色天空上方向是反的 */
+[data-weather="on"] .sky-ink-3:hover {
+  color: #ffffff;
+}
+
+/* ── 玻璃卡 ────────────────────────────────────────────────
+ * 天空上的输入卡。90% 白是算出来的下限，不是随手挑的：
+ * 再透一点，卡里的 ink-3 小字就跌破 4.5:1（80% 白时实测 4.0）。
+ * 玻璃感由 backdrop-blur 和顶部那层高光来给，不由「更透」来给 ——
+ * 高光只会把卡提得更白，是安全方向。
+ */
+.sky-card {
+  transition:
+    background-color 500ms ease-out,
+    border-color 500ms ease-out;
+}
+
+/*
+ * 焦点态交给 Tailwind 的 focus-within:border-jade —— 所以这条排除焦点态，
+ * 否则同为 (0,2,0) 但写在后面，会把焦点框吃掉。
+ */
+[data-weather="on"] .sky-card:not(:focus-within) {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+[data-weather="on"] .sky-card {
+  background-color: rgba(255, 255, 255, 0.9);
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 255, 255, 0) 34%
+  );
+  backdrop-filter: blur(24px) saturate(1.1);
+  -webkit-backdrop-filter: blur(24px) saturate(1.1);
+  box-shadow: 0 18px 48px -20px rgba(4, 10, 18, 0.5);
+}
+
+/*
  * 键盘焦点必须看得见。
  *
  * 放进 base 层是关键：不进层的话它会排在 @import "tailwindcss" 之后，
@@ -188,6 +946,14 @@ body {
    */
   .anim-sparkle,
   .anim-pulse {
+    animation: none !important;
+  }
+
+  /*
+   * 天气层同理，而且更严重：它是整屏的运动。
+   * 停掉运动，保留天空与云 —— 它们本身是静态的底色，不是动效。
+   */
+  .weather-sky > span {
     animation: none !important;
   }
 }
