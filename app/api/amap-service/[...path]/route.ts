@@ -1,3 +1,5 @@
+import { isAllowedAmapProxyPath } from '@/lib/providers/amap-service-proxy'
+
 const UPSTREAM = 'https://restapi.amap.com'
 
 /**
@@ -7,11 +9,18 @@ const UPSTREAM = 'https://restapi.amap.com'
  * 路径不能叫 _AMapService —— App Router 会把下划线开头的目录当 private folder，
  * 直接排除在路由之外，那样这个代理根本不会生成。
  *
- * 注意：这是一个路径不受限的转发口 —— 任何能访问本站的人都可以借它、用我们的
- * jscode 去调高德。上游被钉死在 restapi.amap.com，所以不是任意 SSRF，
- * 但它确实是个凭证放大器。上生产前应当按 JS API 实际用到的路径加白名单。
+ * 它是一个凭证放大器：任何能访问到它的人都能借我们的 jscode 去调高德，
+ * 额度记在我们账上。而且 proxy.ts 的 token 门**挡不住它** ——
+ * 请求是高德 SDK 自己发的（serviceHost 只能是主机前缀，拼不了查询串），
+ * 所以那道门只能把这个路径排除在外。于是白名单成了它唯一的限制，
+ * 名单和实测方法见 lib/providers/amap-service-proxy.ts。
  */
 async function forward(req: Request, path: string[]): Promise<Response> {
+  if (!isAllowedAmapProxyPath(path)) {
+    // 先判后转。绝不能先转发再检查 —— 那样额度已经花出去了
+    return new Response('该路径不在高德代理白名单内', { status: 403 })
+  }
+
   const code = process.env.AMAP_JS_SECURITY_CODE
   if (!code) return new Response('未配置 AMAP_JS_SECURITY_CODE', { status: 500 })
 
