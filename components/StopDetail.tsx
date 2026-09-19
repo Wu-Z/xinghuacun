@@ -1,14 +1,20 @@
 'use client'
 
+import { formatDistance } from '@/lib/core/format'
 import type { RecommendPlace } from '@/lib/core/model'
 import AmapLink from './AmapLink'
 
 type Props = {
   place: RecommendPlace | null
+  /** 它在路线里的编号。null = 还没加入（或未能核实） */
+  order?: number | null
   selected: boolean
   onToggle: (name: string) => void
   onClose: () => void
 }
+
+/** 与卡片上同一套说法，两处不能各写一份 */
+const STATUS: Record<string, string> = { open: '营业中', closed: '已打烊', unknown: '' }
 
 function CloseIcon() {
   return (
@@ -44,20 +50,70 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
  *
  * 桌面端是侧栏内的面板（地图仍然可见）—— 详情是「补充」，不是「跳转」。
  */
-export default function StopDetail({ place, selected, onToggle, onClose }: Props) {
+export default function StopDetail({ place, order = null, selected, onToggle, onClose }: Props) {
   if (!place) return null
 
   const selectable = place.verified
+  const status = place.openStatus ? STATUS[place.openStatus] : ''
 
   return (
     <div className="anim-rise absolute inset-x-0 bottom-0 max-h-[82%] overflow-y-auto border-t border-line bg-surface shadow-4">
-      <div className="sticky top-0 z-10 border-b border-line bg-surface px-4 pb-2.5 pt-4">
-        <h2 className="pr-9 text-[17px] font-semibold leading-[1.4] tracking-[-0.2px] text-ink">
-          {place.name}
-        </h2>
-        <div className="mt-0.5 text-[12.5px] text-ink-3">
-          {[place.category, place.tier].filter(Boolean).join(' · ')}
+      <div className="sticky top-0 z-10 border-b border-line bg-surface px-4 pb-3 pt-4">
+        <div className="flex items-start gap-2.5 pr-9">
+          {/*
+            编号位与列表卡片、地图标记、时间轴、分享卡同源：
+            同一个「2」在哪儿都是同一个地方。没编号时给虚线圈里的「!」——
+            留空会被读成渲染失败（详见 RecommendCard 里同一处判断）。
+          */}
+          {order !== null ? (
+            <span className="tnum mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-jade text-xs font-semibold text-white">
+              {order}
+            </span>
+          ) : (
+            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-dashed border-line-2 text-xs font-semibold text-ink-3">
+              !
+            </span>
+          )}
+
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[17px] font-semibold leading-[1.4] tracking-[-0.2px] text-ink">
+              {place.name}
+            </h2>
+            <div className="mt-0.5 text-[12.5px] text-ink-3">
+              {[place.category, place.tier].filter(Boolean).join(' · ')}
+            </div>
+          </div>
         </div>
+
+        {/*
+          元信息提到标题下面：距离 / 费用 / 营业状态是「要不要去」的三个硬数字，
+          原来它们散在「为什么推荐」的下面，得往下读才看得见。
+        */}
+        {place.verified && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-3">
+            {place.distanceMeters != null && (
+              // 「直线」不能省：这不是驾车里程
+              <span className="tnum">
+                {formatDistance(place.distanceMeters)} · 直线
+              </span>
+            )}
+            {place.cost && (
+              <>
+                <span className="text-line-2">·</span>
+                <span>{place.cost}</span>
+              </>
+            )}
+            {status && (
+              <>
+                <span className="text-line-2">·</span>
+                <span className={place.openStatus === 'open' ? 'font-medium text-jade-deep' : ''}>
+                  {status}
+                </span>
+              </>
+            )}
+          </div>
+        )}
+
         <button
           onClick={onClose}
           aria-label="关闭"
@@ -90,7 +146,10 @@ export default function StopDetail({ place, selected, onToggle, onClose }: Props
 
         <div className="mt-2">
           {place.bestTime && <Row label="最佳时段">{place.bestTime}</Row>}
-          {place.cost && <Row label="费用">{place.cost}</Row>}
+          {/*
+            费用挪到标题下那一行了 —— 它是「要不要去」的硬数字，
+            跟距离、营业状态一起看，不该埋在这一串里。
+          */}
           {place.crowdLevel && (
             <Row label="拥挤度">
               {place.crowdLevel}
@@ -137,9 +196,23 @@ export default function StopDetail({ place, selected, onToggle, onClose }: Props
         </Sec>
       )}
 
+      {/*
+        可信度一开始就在这里，**不折叠**。
+        「这个坐标是谁给的、营业状态是实况还是没查到」正是这个产品的差异化 ——
+        折起来等于没有：用户不会为了看一眼而多点一次。
+      */}
       <Sec title="可信度">
         <Row label="来源">
           {[place.source, place.confidence].filter(Boolean).join(' · ') || '未说明'}
+        </Row>
+        <Row label="坐标">{place.verified ? '高德已核实' : '高德未能核实'}</Row>
+        <Row label="营业状态">
+          {status ? `高德实况 · ${status}` : '高德未提供营业时间'}
+        </Row>
+        <Row label="距离">
+          {place.distanceMeters != null
+            ? `直线 ${formatDistance(place.distanceMeters)}，真实里程以路线规划为准`
+            : '没有坐标，算不出距离'}
         </Row>
         {place.address && <Row label="地址">{place.address}</Row>}
       </Sec>

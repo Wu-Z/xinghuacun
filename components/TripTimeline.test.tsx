@@ -95,11 +95,25 @@ describe('TripTimeline', () => {
     expect(screen.getByText(/备选 · 最清净 · 公园/)).toBeTruthy()
   })
 
-  it('合计只算路上时间与里程', () => {
+  it('合计只算路上时间与里程，且汇总条在三格里的第二格', () => {
     renderTimeline()
-    expect(screen.getByText(/路上共/)).toBeTruthy()
-    expect(screen.getByText('40 分钟')).toBeTruthy()
+    expect(screen.getByText(/路上共 40 分钟/)).toBeTruthy()
     expect(screen.getByText('11.0 公里')).toBeTruthy()
+    // 站数也进汇总条：一眼看到「几个地方、多远、怎么走」
+    expect(screen.getByText('2 站')).toBeTruthy()
+  })
+
+  it('有路段降级时，汇总不说「路上共」—— 那个总数漏算了没规划出来的段', () => {
+    const itinerary = buildItinerary({
+      origin: ORIGIN,
+      end: null,
+      stops: STOPS,
+      legs: [{ mode: 'walking', durationSeconds: 0, distanceMeters: 0, degraded: true }, LEGS[1]],
+    })
+    renderTimeline({ itinerary })
+
+    expect(screen.queryByText(/路上共/)).toBeNull()
+    expect(screen.getByText('1 段已规划')).toBeTruthy()
   })
 
   it('未设终点时说明「到这里就结束了」，并给出设置入口', () => {
@@ -131,7 +145,9 @@ describe('TripTimeline', () => {
     })
     renderTimeline({ itinerary })
     expect(screen.getByText(/有路段没规划出来/)).toBeTruthy()
-    expect(screen.getByText(/（直线估算）/)).toBeTruthy()
+    expect(screen.getByText(/步行 · 直线估算/)).toBeTruthy()
+    // 更要紧的是：降级的那段不许出现任何时长 —— 它是估的，不是算的
+    expect(screen.queryByText(/步行 0 分钟/)).toBeNull()
   })
 
   it('不出现任何时刻 —— 本版不排时间表', () => {

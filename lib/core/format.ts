@@ -41,3 +41,28 @@ export function summarizeModes(legs: { mode: TravelMode }[]): string {
   }
   return unique.map((m) => MODE_LABEL[m]).join(' + ')
 }
+
+/**
+ * 一段怎么走，说成一句：`步行 8 分钟 · 600 米`。
+ *
+ * 时间轴与分享卡共用这一份，免得同一段路在屏幕上和图上出现两种说法。
+ *
+ * **降级段不印时长**：那个数是拿直线距离估出来的（见 providers/route 的降级逻辑），
+ * 高德并没有算出它。旁边已经写着「直线估算」，再给一个「12 分钟」
+ * 就等于把估算说成了实测 —— 这正是「失败不许伪装成 0 分钟」那条的同一件事。
+ */
+export function legSummary(leg: {
+  mode: TravelMode
+  durationSeconds: number
+  distanceMeters: number
+  degraded?: boolean
+}): string {
+  const mode = MODE_LABEL[leg.mode]
+  if (leg.degraded) {
+    // 里程也拿不到时只留「直线估算」这句实话，不写「约 —」这种半截话
+    const distance =
+      leg.distanceMeters > 0 ? ` · 约 ${formatDistance(leg.distanceMeters)}` : ''
+    return `${mode} · 直线估算${distance}`
+  }
+  return `${mode} ${formatDuration(leg.durationSeconds)} · ${formatDistance(leg.distanceMeters)}`
+}

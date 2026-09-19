@@ -49,7 +49,9 @@ export default function RecommendCard({ place, order, busy, onToggle, onOpenDeta
 
       {/*
         未能核实的地点不占路线编号：它在语义上就不是一个可拜访的站点。
-        徽章显示 · 而不是数字，避免出现「有编号但画不出路线」的矛盾。
+        编号位给的是「!」而**不是留空**：空白在那个位置会被读成「这里本该有个数字，
+        但没渲染出来」—— 看起来像界面坏了。一个虚线圈里的感叹号说的是
+        「这里本来就给不了编号」。
       */}
       {/*
         aria-label 始终只说这个按钮**是什么动作**（选择 / 取消选择 / 无法加入路线），
@@ -79,7 +81,7 @@ export default function RecommendCard({ place, order, busy, onToggle, onOpenDeta
               : 'cursor-not-allowed border border-dashed border-line-2 text-ink-3'
         }`}
       >
-        {selected ? order : selectable ? '+' : '·'}
+        {selected ? order : selectable ? '+' : '!'}
       </button>
 
       <button onClick={() => onOpenDetail(place.name)} className="min-w-0 flex-1 text-left">

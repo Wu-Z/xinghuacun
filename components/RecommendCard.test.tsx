@@ -89,6 +89,12 @@ describe('RecommendCard · 未核实', () => {
     expect(isDisabled('选择 正常')).toBe(false)
   })
 
+  it('编号位给「!」而不是留空 —— 空白会被读成渲染失败', () => {
+    renderCard(place({ name: '查不到', verified: false, point: null }))
+    const badge = screen.getByRole('button', { name: /未能核实，无法加入路线/ })
+    expect(badge.textContent).toBe('!')
+  })
+
   it('用斜纹底 + 虚线圈 + 文字三重表达，不单靠颜色', () => {
     // 琥珀和红分不清、灰度打印、色觉障碍 —— 三种情况都得读得出来，
     // 所以同一个意思要落在三种不同的视觉信号上
