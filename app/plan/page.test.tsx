@@ -60,6 +60,28 @@ function streamOf(places: RecommendPlace[], tail: unknown[] = []): Response {
   ])
 }
 
+/**
+ * 一条**不闭合**的流：卡片已经到，但生成还在继续。
+ *
+ * 要测「生成中的锁」就必须停在 busy 里，而 streamOf 会在同一帧里把
+ * done 也推完 —— 那样测的其实是「跑完之后」，锁早就松开了。
+ */
+function openStream(places: RecommendPlace[]): Response {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const p of places) {
+        controller.enqueue(encoder.encode(`${JSON.stringify({ type: 'place', place: p })}\n`))
+      }
+      // 刻意不 close：模拟「还在生成」
+    },
+  })
+  return new Response(body, {
+    status: 200,
+    headers: { 'content-type': 'application/x-ndjson' },
+  })
+}
+
 let recommendCalls: Record<string, unknown>[] = []
 /** 让用例指定假路线每一段的方式。空数组 = 按请求里的 mode 给所有段 */
 let routeLegModes: string[] = []
@@ -354,6 +376,50 @@ describe('结果页 · 追问新增项的归属', () => {
 
     await waitFor(() => expect(screen.getByText('味友鸭肉面线')).toBeTruthy(), { timeout: 3000 })
     expect(screen.queryByText(/的追问新增/)).toBeNull()
+  })
+})
+
+describe('结果页 · 生成中的锁', () => {
+  it('生成期间不给「修改」入口，只留一句说明', async () => {
+    nextResponses = [openStream([COMPOSITE])]
+    render(<PlanPage />)
+
+    await waitFor(() => expect(screen.getByText('生成中不可修改')).toBeTruthy(), { timeout: 3000 })
+    // 品牌名这时候是纯文本，不是能点回首页的链接
+    expect(screen.queryByRole('link', { name: '周边去哪' })).toBeNull()
+  })
+
+  it('生成跑完，「修改」入口自己回来', async () => {
+    nextResponses = [streamOf([COMPOSITE, PLAIN])]
+    render(<PlanPage />)
+    await waitForCards(2)
+
+    expect(screen.getByRole('link', { name: '周边去哪' })).toBeTruthy()
+    expect(screen.queryByText('生成中不可修改')).toBeNull()
+  })
+
+  it('生成期间列表上的「追问」一律禁用 —— 同时只允许一条在飞', async () => {
+    nextResponses = [openStream([COMPOSITE, PLAIN])]
+    render(<PlanPage />)
+
+    await waitFor(
+      () => expect(screen.getAllByRole('button', { name: '追问' })).toHaveLength(2),
+      { timeout: 3000 },
+    )
+    for (const b of screen.getAllByRole('button', { name: '追问' })) {
+      expect((b as HTMLButtonElement).disabled).toBe(true)
+    }
+  })
+
+  it('生成期间勾不动：勾选按钮禁用，点了也不会进选择集', async () => {
+    nextResponses = [openStream([COMPOSITE])]
+    render(<PlanPage />)
+
+    const pick = await screen.findByRole('button', { name: '选择 集美学村' }, { timeout: 3000 })
+    expect((pick as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(pick)
+    // 托盘靠「已选 N 个」出现，没被勾中时它就不该在
+    await waitFor(() => expect(screen.queryByText(/已选/)).toBeNull())
   })
 })
 

@@ -124,6 +124,7 @@ export default function RecommendList({
         key={p.name}
         place={p}
         order={i === -1 ? null : i + 1}
+        busy={busy}
         onToggle={onToggle}
         onOpenDetail={onOpenDetail}
         onAsk={onAsk}

@@ -6,6 +6,15 @@ import AmapLink from './AmapLink'
 type Props = {
   place: RecommendPlace
   order: number | null
+  /**
+   * 生成/追问进行中。
+   *
+   * 这时卡片上只允许「看」：勾选和追问都要锁住 ——
+   * 列表还在往下长，此刻勾中的是一个还会变的集合；而追问问的正是
+   * 一个还没定型的列表，答回来的时候参照物已经换了一批。
+   * 「详情」不受影响：它是只读的，锁它只会让人觉得页面卡了。
+   */
+  busy: boolean
   onToggle: (name: string) => void
   onOpenDetail: (name: string) => void
   onAsk: (name: string) => void
@@ -18,7 +27,7 @@ function Sep() {
   return <span className="text-line-2">·</span>
 }
 
-export default function RecommendCard({ place, order, onToggle, onOpenDetail, onAsk }: Props) {
+export default function RecommendCard({ place, order, busy, onToggle, onOpenDetail, onAsk }: Props) {
   const selectable = place.verified
   const selected = order !== null
 
@@ -42,9 +51,16 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail, on
         未能核实的地点不占路线编号：它在语义上就不是一个可拜访的站点。
         徽章显示 · 而不是数字，避免出现「有编号但画不出路线」的矛盾。
       */}
+      {/*
+        aria-label 始终只说这个按钮**是什么动作**（选择 / 取消选择 / 无法加入路线），
+        不把「现在锁着」写进去：那是 disabled 自己要表达的状态，读屏会播。
+        把状态揉进名字会让「同一张卡在生成前后叫两个不同的东西」——
+        按名字找它的代码（含测试）会跟着断。
+      */}
       <button
         onClick={() => selectable && onToggle(place.name)}
-        disabled={!selectable}
+        disabled={!selectable || busy}
+        title={busy && selectable ? '生成中，等它跑完再挑' : undefined}
         aria-label={
           selectable
             ? selected
@@ -57,7 +73,9 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail, on
           selected
             ? 'bg-jade text-white'
             : selectable
-              ? 'border border-line-2 text-ink-3 hover:border-jade hover:text-jade'
+              ? busy
+                ? 'border border-line-2 text-ink-3'
+                : 'border border-line-2 text-ink-3 hover:border-jade hover:text-jade'
               : 'cursor-not-allowed border border-dashed border-line-2 text-ink-3'
         }`}
       >
@@ -145,7 +163,9 @@ export default function RecommendCard({ place, order, onToggle, onOpenDetail, on
         </button>
         <button
           onClick={() => onAsk(place.name)}
-          className="h-8 rounded-xs px-2.5 text-xs text-ink-3 transition-colors hover:bg-mist hover:text-jade-deep"
+          disabled={busy}
+          title={busy ? '等这条答完再问下一条' : undefined}
+          className="h-8 rounded-xs px-2.5 text-xs text-ink-3 transition-colors hover:bg-mist hover:text-jade-deep disabled:cursor-not-allowed disabled:bg-mist-2 disabled:text-ink-3 disabled:hover:bg-mist-2"
         >
           追问
         </button>

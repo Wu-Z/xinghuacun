@@ -459,11 +459,25 @@ export default function PlanPage() {
           这里原来挂着「出发点 + 偏好的摘要卡 + 修改」。用户不需要在挑地方的时候
           再看见一遍自己从哪出发 —— 那是在首页说过的事，重复一遍只是占版面。
           回首页改填的出口是左上角那个品牌名。
+
+          但**生成期间它必须锁住**：此刻列表还在往下长，改了需求就等于让
+          已经收到的卡片按旧条件留在屏幕上，用户没法判断哪几条还算数。
+          想改就先按「停止」（或等它跑完），那时入口自己会回来 ——
+          所以这里不是禁用样式，而是整块换成一句说明：点了没反应比没有更糟。
         */}
-        <div className="flex shrink-0 items-center border-b border-line px-4 py-3">
-          <Link href="/" className="text-[13.5px] font-semibold text-ink hover:text-jade">
-            周边去哪
-          </Link>
+        <div className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
+          {busy ? (
+            <span className="text-[13.5px] font-semibold text-ink">周边去哪</span>
+          ) : (
+            <Link href="/" className="text-[13.5px] font-semibold text-ink hover:text-jade">
+              周边去哪
+            </Link>
+          )}
+          {busy && (
+            <span className="ml-auto rounded-full bg-mist px-2.5 py-0.5 text-[11.5px] text-ink-3">
+              生成中不可修改
+            </span>
+          )}
         </div>
 
         {askTarget && (

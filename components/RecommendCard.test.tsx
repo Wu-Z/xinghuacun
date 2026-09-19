@@ -21,11 +21,12 @@ function place(over: Partial<RecommendPlace> = {}): RecommendPlace {
   }
 }
 
-function renderCard(p: RecommendPlace, order: number | null = null) {
+function renderCard(p: RecommendPlace, order: number | null = null, busy = false) {
   return render(
     <RecommendCard
       place={p}
       order={order}
+      busy={busy}
       onToggle={vi.fn()}
       onOpenDetail={vi.fn()}
       onAsk={vi.fn()}
@@ -102,6 +103,32 @@ describe('RecommendCard · 未核实', () => {
   it('已核实的卡片没有斜纹底', () => {
     const { container } = renderCard(place({ name: '正常' }))
     expect(container.querySelector('.stripe-locked')).toBeNull()
+  })
+})
+
+describe('RecommendCard · 生成中只许看不许动', () => {
+  const isDisabled = (name: string | RegExp) =>
+    (screen.getByRole('button', { name }) as HTMLButtonElement).disabled
+
+  it('生成中不能勾选', () => {
+    renderCard(place({ name: '正常' }), null, true)
+    expect(isDisabled('选择 正常')).toBe(true)
+  })
+
+  it('生成中不能追问（同时只允许一条在飞）', () => {
+    renderCard(place({ name: '正常' }), null, true)
+    expect(isDisabled('追问')).toBe(true)
+  })
+
+  it('生成中仍然能看详情 —— 只读的东西锁了只会让人以为页面卡了', () => {
+    renderCard(place({ name: '正常' }), null, true)
+    expect(isDisabled('详情')).toBe(false)
+  })
+
+  it('不在生成中时勾选与追问都可用', () => {
+    renderCard(place({ name: '正常' }))
+    expect(isDisabled('选择 正常')).toBe(false)
+    expect(isDisabled('追问')).toBe(false)
   })
 })
 
