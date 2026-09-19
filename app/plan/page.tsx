@@ -4,18 +4,23 @@ import Link from 'next/link'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FollowupBar from '@/components/FollowupBar'
 import MapCanvas from '@/components/MapCanvas'
+import MapPicker from '@/components/MapPicker'
 import PlaceCardSkeleton from '@/components/PlaceCardSkeleton'
 import RecommendList from '@/components/RecommendList'
 import SelectionTray from '@/components/SelectionTray'
+import ShareCardDialog from '@/components/ShareCardDialog'
 import SparkleIcon from '@/components/SparkleIcon'
 import StopDetail from '@/components/StopDetail'
 import TripTimeline from '@/components/TripTimeline'
 import ViewSwitch from '@/components/ViewSwitch'
-import { usePlan } from '@/lib/client/plan-session'
+import { patchShare, usePlan } from '@/lib/client/plan-session'
 import { readRecommendStream } from '@/lib/client/recommend-stream'
+import { useWeather } from '@/lib/client/weather'
 import { summarizeModes } from '@/lib/core/format'
 import { buildItinerary } from '@/lib/core/itinerary'
 import { pickRouteMode } from '@/lib/core/route-mode'
+import { buildShareCard, defaultShareTitle, shareContextLabel } from '@/lib/core/share-card'
+import { splitWeather } from '@/lib/core/weather'
 import { applyDiff } from '@/lib/recommend/apply-diff'
 import { canFinalize } from '@/lib/recommend/can-finalize'
 import { inheritSelection } from '@/lib/recommend/inherit-selection'
@@ -95,6 +100,18 @@ export default function PlanPage() {
   const [end, setEnd] = useState<{ point: LatLng; label: string } | null>(null)
   const [pickingEnd, setPickingEnd] = useState(false)
   const [view, setView] = useState<'list' | 'timeline'>('list')
+  /** 分享卡浮层。行程定了才有得分享，所以它只从行程视图的托盘进 */
+  const [sharing, setSharing] = useState(false)
+
+  /*
+   * 分享卡第一行要写天气（「… · 今天 · 26° 晴」）。
+   * 这一页原来不取天气 —— 那是首页那些字的事。
+   *
+   * 只在打开分享卡时才拉：这一页平时根本没有用到天气的地方，
+   * 为了一个可能永远不会打开的浮层先发一次请求是白花额度（还要占高德的并发闸门）。
+   * 拿不到就不写那一截（useWeather 永远不给错误态，见它的注释）。
+   */
+  const weather = useWeather(sharing ? (draft?.point ?? null) : null)
 
   const reqIdRef = useRef(0)
   const startedRef = useRef(false)
@@ -406,6 +423,35 @@ export default function PlanPage() {
   }, [route, draft, end, places])
 
   /*
+   * 分享卡的内容。装配在 lib/core/share-card（纯函数、有测试），
+   * 这里只管把「当前这一条行程」给它 —— 名字与出行时间取自草稿，
+   * 所以关掉浮层再打开，用户改过的名字还在。
+   */
+  const shareCard = useMemo(() => {
+    if (!itinerary) return null
+
+    const stops = itinerary.stops.filter((s) => s.kind === 'stop')
+    const typed = draft?.share?.title ?? ''
+
+    return buildShareCard({
+      itinerary,
+      places,
+      // 名字被清空时回落到系统给的那个：卡上不能没有标题，
+      // 不然导出的是一张没名字的图，收到的人不知道这是什么
+      title: typed.trim() || defaultShareTitle(stops[0]?.name ?? '这次出行', stops.length),
+      when: draft?.share?.when ?? null,
+    })
+  }, [itinerary, places, draft])
+
+  const shareContext = useMemo(() => {
+    if (!draft) return null
+    return shareContextLabel({
+      label: draft.label,
+      weather: weather ? splitWeather(weather).head : null,
+    })
+  }, [draft, weather])
+
+  /*
    * 取消勾选把站点减到 2 个以下时路线就没了；此时若还停在「行程」上，
    * 用户看到的会是一块空白 —— 拉回列表。
    *
@@ -445,6 +491,8 @@ export default function PlanPage() {
   }
 
   const detail = detailName ? (places.find((p) => p.name === detailName) ?? null) : null
+  // 详情里的编号与列表、地图上那个编号同源：同一个「2」指的是同一个地方
+  const detailOrder = detail ? visitOrder.indexOf(detail.name) : -1
   const canRefine = canFinalize(places, selectedOrder)
 
   return (
@@ -627,6 +675,11 @@ export default function PlanPage() {
           canFinalize={view === 'list' && canRefine}
           busy={busy}
           showViewButton={view === 'list'}
+          trip={
+            view === 'timeline' && itinerary
+              ? { onBackToList: () => setView('list'), onShare: () => setSharing(true) }
+              : undefined
+          }
           onClear={() => setSelectedOrder([])}
           onView={() => setView('timeline')}
           onFinalize={runFinalize}
@@ -634,6 +687,7 @@ export default function PlanPage() {
 
         <StopDetail
           place={detail}
+          order={detailOrder >= 0 ? detailOrder + 1 : null}
           selected={detail ? selectedOrder.includes(detail.name) : false}
           onToggle={togglePlace}
           onClose={() => setDetailName(null)}
@@ -656,33 +710,31 @@ export default function PlanPage() {
         />
       </div>
 
-      {/* 终点选点：全屏浮层，选完即关（与首页的地图选点同一套做法） */}
+      {/* 分享卡浮层：卡面预览 + 改名 + 出行时间（可选）+ 保存图片 */}
+      {sharing && shareCard && (
+        <ShareCardDialog
+          card={shareCard}
+          contextLabel={shareContext}
+          onChangeTitle={(title) => patchShare({ title })}
+          onChangeWhen={(when) => patchShare({ when })}
+          onClose={() => setSharing(false)}
+        />
+      )}
+
+      {/* 终点选点：与首页的出发点选点共用同一个浮层（同一件事：选一个坐标出来） */}
       {pickingEnd && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-surface">
-          <div className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
-            <span className="text-sm font-medium text-ink">在地图上点一下，作为终点</span>
-            <button
-              type="button"
-              onClick={() => setPickingEnd(false)}
-              className="ml-auto rounded-xs px-3 py-1.5 text-sm text-ink-3 transition-colors hover:bg-mist hover:text-ink"
-            >
-              取消
-            </button>
-          </div>
-          <div className="relative flex-1">
-            <MapCanvas
-              origin={draft.point}
-              places={places}
-              visitOrder={visitOrder}
-              route={route}
-              picking
-              onPickLocation={(p) => {
-                setEnd({ point: p, label: '地图所选终点' })
-                setPickingEnd(false)
-              }}
-            />
-          </div>
-        </div>
+        <MapPicker
+          target="终点"
+          near={draft.point}
+          // 把出发点标出来当参照：选终点时「离家多远」正是要看的东西
+          origin={draft.point}
+          initial={end ? { point: end.point, label: end.label } : null}
+          onConfirm={(p, name) => {
+            setEnd({ point: p, label: name })
+            setPickingEnd(false)
+          }}
+          onClose={() => setPickingEnd(false)}
+        />
       )}
     </main>
   )

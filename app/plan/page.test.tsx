@@ -7,8 +7,17 @@ import type { RecommendPlace } from '@/lib/core/model'
 vi.mock('@/components/MapCanvas', () => ({ default: () => null }))
 
 const planRef: { current: unknown } = { current: null }
+/**
+ * 分享卡改名 / 出行时间都走它落进草稿。
+ *
+ * 必须用 vi.hoisted：vi.mock 会被整体提到 import 之上，工厂里引用的
+ * 顶层 const 若在声明前求值（`vi.fn()` 就是）会直接炸在提升阶段 ——
+ * 症状不是「这条用例红」，而是这个文件里所有用例一起红。
+ */
+const mocks = vi.hoisted(() => ({ patchShare: vi.fn() }))
 vi.mock('@/lib/client/plan-session', () => ({
   usePlan: () => planRef.current,
+  patchShare: (patch: Record<string, unknown>) => mocks.patchShare(patch),
 }))
 
 vi.mock('next/link', () => ({
@@ -85,10 +94,14 @@ function openStream(places: RecommendPlace[]): Response {
 let recommendCalls: Record<string, unknown>[] = []
 /** 让用例指定假路线每一段的方式。空数组 = 按请求里的 mode 给所有段 */
 let routeLegModes: string[] = []
+/** 天气响应体。默认 null（拿不到天气）；分享卡那几条会塞一份进来 */
+let weatherPayload: unknown = null
 
 beforeEach(() => {
   recommendCalls = []
   routeLegModes = []
+  weatherPayload = null
+  mocks.patchShare.mockClear()
   planRef.current = {
     point: { lng: 118.1, lat: 24.57 },
     label: '地图所选位置',
@@ -106,6 +119,21 @@ beforeEach(() => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
+      /*
+       * 这一页也会问一次天气（分享卡的语境行要用）。
+       *
+       * 必须在这儿拦掉：下面那个分支会把**所有**非 route 的请求都当成
+       * recommend 响应、从队列里取一条 —— 漏了这条，天气请求会把
+       * 唯一那批复用响应吃掉，真正的 recommend 拿到空队列，
+       * 于是整个文件的用例一起红（症状是「没安排响应」，看着跟天气毫无关系）。
+       */
+      if (String(url).includes('/api/weather')) {
+        return new Response(JSON.stringify({ weather: weatherPayload }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+
       if (String(url).includes('/api/route/plan')) {
         // 按请求里的 stops 回一条路线 —— order 必须非空，
         // 否则时间轴拿不到站点，测不到「看行程」
@@ -490,5 +518,50 @@ describe('结果页 · 下一步引导', () => {
     fireEvent.click(screen.getByRole('button', { name: '列表' }))
     await waitForCards(2)
     expect(screen.queryByText(/拜访顺序/)).toBeNull()
+  })
+})
+
+describe('结果页 · 分享行程', () => {
+  /** 勾两个点、切到行程视图 —— 分享入口只在这一屏 */
+  async function gotoItinerary() {
+    nextResponses = [streamOf([COMPOSITE, PLAIN])]
+    render(<PlanPage />)
+    await waitForCards(2)
+
+    await clickButton(/选择 集美学村/)
+    await clickButton(/选择 海堤路/)
+    await clickButton(/看行程/)
+    // 路线算完的证据：行程托盘的「分享行程」出现了
+    await screen.findByRole('button', { name: /分享行程/ }, { timeout: 3000 })
+  }
+
+  it('行程托盘给「分享行程」，点开是卡面', async () => {
+    await gotoItinerary()
+
+    await clickButton(/分享行程/)
+    expect(await screen.findByRole('dialog', { name: '行程分享卡' })).toBeTruthy()
+
+    // 没改过名字时，用系统按行程给的那个（从哪一站起、一共几站）
+    const [faceTitle] = screen.getAllByLabelText('卡片名称') as HTMLInputElement[]
+    expect(faceTitle.value).toBe('集美学村起 · 2 站')
+    expect(screen.getByText('地点经高德核实 · 距离为直线口径')).toBeTruthy()
+  })
+
+  it('在卡上改名落进草稿 —— 重新分享不用再打一遍', async () => {
+    await gotoItinerary()
+    await clickButton(/分享行程/)
+
+    const [faceTitle] = (await screen.findAllByLabelText('卡片名称')) as HTMLInputElement[]
+    fireEvent.change(faceTitle, { target: { value: '集美半日' } })
+
+    expect(mocks.patchShare).toHaveBeenCalledWith({ title: '集美半日' })
+  })
+
+  it('不改名时不写草稿 —— 默认名是算出来的，不该被当成用户的输入存下来', async () => {
+    await gotoItinerary()
+    await clickButton(/分享行程/)
+
+    expect(await screen.findByRole('dialog', { name: '行程分享卡' })).toBeTruthy()
+    expect(mocks.patchShare).not.toHaveBeenCalled()
   })
 })

@@ -8,6 +8,14 @@ type Props = {
   busy: boolean
   /** 已经在行程页时别再给「看行程」—— 那个按钮点下去什么也不会发生 */
   showViewButton?: boolean
+  /**
+   * 行程视图的托盘形态。
+   *
+   * 到了行程这一屏，用户要的就两件事：回列表再挑一个、把这条行程分享出去。
+   * 「清空」在这里反而危险（清掉的是已经排好序的一整条路），所以换成这两颗，
+   * 与列表页的托盘共用同一套等分排版。
+   */
+  trip?: { onBackToList: () => void; onShare: () => void }
   onClear: () => void
   onView: () => void
   onFinalize: () => void
@@ -28,6 +36,7 @@ export default function SelectionTray({
   canFinalize,
   busy,
   showViewButton = true,
+  trip,
   onClear,
   onView,
   onFinalize,
@@ -35,6 +44,45 @@ export default function SelectionTray({
   if (selectedCount === 0) return null
 
   const remaining = 2 - selectedCount
+
+  if (trip) {
+    return (
+      <div className="anim-rise shrink-0 border-t border-line bg-surface px-4 py-3 shadow-4">
+        <div className="flex items-center gap-2">
+          <div className="shrink-0 text-[13px] text-ink-2">
+            已选 <b className="tnum text-[15px] font-semibold text-ink">{selectedCount}</b> {unit}
+          </div>
+
+          <div className="flex min-w-0 flex-1 gap-2">
+            <button
+              onClick={trip.onBackToList}
+              className="h-11 flex-1 rounded-sm border border-line-2 bg-surface text-[13px] text-ink transition-colors hover:border-ink-3 md:h-10"
+            >
+              ← 再挑一挑
+            </button>
+            <button
+              onClick={trip.onShare}
+              className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-sm bg-jade text-[13px] font-medium text-white transition-colors hover:bg-jade-deep md:h-10"
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M12 3v12m0-12l-4 4m4-4l4 4M5 15v4a2 2 0 002 2h10a2 2 0 002-2v-4" />
+              </svg>
+              分享行程
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="anim-rise shrink-0 border-t border-line bg-surface px-4 py-3 shadow-4">

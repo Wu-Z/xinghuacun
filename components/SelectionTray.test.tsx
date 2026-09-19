@@ -66,4 +66,33 @@ describe('SelectionTray', () => {
     screen.getByRole('button', { name: '清空' }).click()
     expect(props.onClear).toHaveBeenCalled()
   })
+
+  describe('行程视图的托盘', () => {
+    it('换成「再挑一挑 / 分享行程」，并且不给「清空」', () => {
+      renderTray({
+        selectedCount: 3,
+        unit: '个站点',
+        trip: { onBackToList: vi.fn(), onShare: vi.fn() },
+      })
+
+      expect(screen.getByRole('button', { name: /再挑一挑/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /分享行程/ })).toBeTruthy()
+      // 行程页的「清空」清掉的是一整条已经排好序的路，不是随手可撤销的选择
+      expect(screen.queryByRole('button', { name: '清空' })).toBeNull()
+    })
+
+    it('两个动作各自回调出去', () => {
+      const { props } = renderTray({
+        selectedCount: 3,
+        unit: '个站点',
+        trip: { onBackToList: vi.fn(), onShare: vi.fn() },
+      })
+
+      screen.getByRole('button', { name: /再挑一挑/ }).click()
+      screen.getByRole('button', { name: /分享行程/ }).click()
+
+      expect(props.trip?.onBackToList).toHaveBeenCalled()
+      expect(props.trip?.onShare).toHaveBeenCalled()
+    })
+  })
 })
