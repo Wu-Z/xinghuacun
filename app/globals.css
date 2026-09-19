@@ -923,6 +923,163 @@ body {
  * 两条框错位叠在一起。进了 base，utilities 正常生效，
  * 需要自己画焦点态的地方（卡片用 focus-within 兜住）才管得住。
  */
+/* ── 卡外的语境行与偏好 pill ────────────────────────────────
+ * 出发点行和偏好 pill 都在卡**外面**，压的是天空而不是白卡。
+ * 深色字压在深蓝天上会读不出来，所以它们的颜色统一在这里按 [data-weather] 翻白 ——
+ * 这件事没法用 Tailwind 的 text-* 表达（那些类不知道「只有天空态才变色」）。
+ *
+ * 教训来自天气层那一轮：新加一处文字，就要回头检查它现在压着什么底。
+ */
+
+/* 出发点：一行语境，不是表单里的一段 */
+.origin-row {
+  border-color: transparent;
+  background-color: transparent;
+  transition:
+    color 500ms ease-out,
+    background-color 500ms ease-out,
+    border-color 500ms ease-out;
+}
+
+.origin-row .origin-pin {
+  color: var(--color-jade);
+}
+.origin-row .origin-key {
+  color: var(--color-ink-3);
+}
+.origin-row .origin-val {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+.origin-row .origin-act {
+  color: var(--color-ink-3);
+}
+.origin-row .origin-act:hover:not(:disabled) {
+  background-color: var(--color-mist);
+  color: var(--color-ink);
+}
+
+/*
+ * 未选：整行是「必填提醒」，不是一个安静的信息行。
+ * 琥珀是现成的语义色 —— 它在别处表示「数据不确定」，
+ * 这里表示「有一件事还没定」，是同一条脉络。
+ */
+.origin-row[data-empty] {
+  background-color: var(--color-amber-bg);
+  border-color: var(--color-amber-line);
+}
+.origin-row[data-empty] .origin-pin,
+.origin-row[data-empty] .origin-key,
+.origin-row[data-empty] .origin-val,
+.origin-row[data-empty] .origin-act {
+  color: var(--color-amber);
+}
+.origin-row[data-empty] .origin-val {
+  font-weight: 400;
+}
+.origin-row[data-empty] .origin-act:hover:not(:disabled) {
+  background-color: rgba(138, 90, 11, 0.1);
+}
+
+/*
+ * 已选 + 天空：整行翻白。
+ * 未选态不用管 —— 它自带琥珀底，本来就是个亮块。
+ */
+[data-weather="on"] .origin-row:not([data-empty]) .origin-pin,
+[data-weather="on"] .origin-row:not([data-empty]) .origin-val {
+  color: #ffffff;
+}
+[data-weather="on"] .origin-row:not([data-empty]) .origin-key,
+[data-weather="on"] .origin-row:not([data-empty]) .origin-act {
+  color: rgba(255, 255, 255, 0.85);
+}
+[data-weather="on"] .origin-row:not([data-empty]) .origin-act:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+/* ── 偏好 pill ────────────────────────────────────────────── */
+.pref-key {
+  color: var(--color-ink-3);
+  transition: color 500ms ease-out;
+}
+[data-weather="on"] .pref-key {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.pref-pill {
+  background-color: var(--color-surface);
+  border-color: var(--color-line-2);
+  color: var(--color-ink-3);
+  transition:
+    background-color 500ms ease-out,
+    border-color 150ms ease-out,
+    color 150ms ease-out;
+}
+.pref-pill:hover {
+  border-color: var(--color-ink-3);
+  color: var(--color-ink);
+}
+/* 有值 = 实值在说话，不再是占位词：颜色与字重都实起来 */
+.pref-pill[data-filled] {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+.pref-pill[data-open] {
+  border-color: var(--color-jade);
+  color: var(--color-jade-deep);
+  box-shadow: 0 0 0 3px var(--color-jade-50);
+}
+
+/*
+ * 天空态：pill 与卡片同一档白度。
+ * 90% 是算出来的下限（见 .sky-card）—— 再透一点，里面的小字就跌破 4.5:1，
+ * 而 pill 比卡片小得多，字也更小，没有余量去玩更透的玻璃。
+ * 下面两条带 [data-weather] 的 hover / open 必须重写：它们和不带前缀的
+ * hover / open 特异性相同，靠源码顺序决胜，会被上面这条天空态吃掉。
+ */
+[data-weather="on"] .pref-pill {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+[data-weather="on"] .pref-pill:hover {
+  border-color: rgba(255, 255, 255, 0.85);
+}
+[data-weather="on"] .pref-pill[data-open] {
+  border-color: var(--color-jade);
+  color: var(--color-jade-deep);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.5);
+}
+
+/* ── 偏好浮层 ─────────────────────────────────────────────── */
+.pref-pop {
+  z-index: 30;
+  padding: 12px 13px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-3);
+}
+.pref-pop-key {
+  color: var(--color-ink-3);
+  margin-bottom: 9px;
+}
+.pref-pop-input {
+  border-color: var(--color-line-2);
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+}
+.pref-pop-input:focus {
+  border-color: var(--color-jade);
+  box-shadow: 0 0 0 3px var(--color-jade-50);
+}
+.pref-pop-hint {
+  color: var(--color-ink-3);
+  margin-top: 8px;
+}
+
 @layer base {
   :focus-visible {
     outline: 2px solid var(--color-jade);

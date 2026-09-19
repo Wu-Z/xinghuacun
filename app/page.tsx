@@ -2,8 +2,9 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import ChipGroup from '@/components/ChipGroup'
 import MapCanvas from '@/components/MapCanvas'
+import OriginRow from '@/components/OriginRow'
+import PreferencePills from '@/components/PreferencePills'
 import SparkleIcon from '@/components/SparkleIcon'
 import WeatherBar from '@/components/WeatherBar'
 import WeatherOverlay from '@/components/WeatherOverlay'
@@ -30,31 +31,6 @@ const EMPTY_PREFS: Preferences = {
   destination: '',
 }
 
-const CROWD_LABEL: Record<string, string> = { low: '低', medium: '一般', high: '无所谓' }
-const CROWD_VALUE: Record<string, Preferences['crowdTolerance']> = {
-  低: 'low',
-  一般: 'medium',
-  无所谓: 'high',
-}
-
-function PinIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-4 w-4 shrink-0 text-jade"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1116 0z" />
-      <circle cx="12" cy="10" r="2.6" />
-    </svg>
-  )
-}
-
 export default function Home() {
   const router = useRouter()
   // 从结果页点「修改」回来时，之前填的东西要还在，不能清空重来
@@ -63,7 +39,6 @@ export default function Home() {
   const [edited, setEdited] = useState<PlanDraft | null>(null)
   const [locating, setLocating] = useState(false)
   const [picking, setPicking] = useState(false)
-  const [more, setMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const point: LatLng | null = edited?.point ?? saved?.point ?? null
@@ -267,12 +242,29 @@ export default function Home() {
         </p>
 
         {/*
-          输入框与出发点是同一张卡：选点是发送前唯一的必填项，不该跟输入框分居两处。
+          出发点在卡片**外面**，是一行语境不是表单里的一段。
+          它原来和输入框同卡，于是那张卡同时承担「选点 / 打字 / 发送」三件事，
+          三者的视觉权重不同，挤在一起谁都不是主角。
+
+          代价是失去了「卡内 = 表单 = 必填」这层暗示，所以未选时它整行转琥珀
+          （见 OriginRow 与 globals.css 的 .origin-row 段）。
+          而「自动定位已经替你填好」之后，它多数时候本来就只是一句交代。
+        */}
+        <OriginRow
+          label={label}
+          ready={ready}
+          locating={locating}
+          onLocate={useGeolocation}
+          onPick={() => setPicking(true)}
+        />
+
+        {/*
+          输入卡只做一件事：打字 + 发送。
 
           焦点态画在整张卡上（focus-within），不是画在里面的 textarea 上 ——
           输入区本身就是这张卡，方角的外框套在 22px 圆角里会错位。
         */}
-        <div className="sky-card mt-8 rounded-xl border border-line bg-surface transition-colors focus-within:border-jade focus-within:ring-[3px] focus-within:ring-jade-50">
+        <div className="sky-card mt-2.5 rounded-xl border border-line bg-surface transition-colors focus-within:border-jade focus-within:ring-[3px] focus-within:ring-jade-50">
           <textarea
             value={prefs.rawRequest}
             onChange={(e) => setPrefs({ ...prefs, rawRequest: e.target.value })}
@@ -285,15 +277,24 @@ export default function Home() {
             className="block w-full resize-none bg-transparent px-5 pb-1 pt-5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-ink-3"
           />
 
-          <div className="flex items-center gap-3 px-5 pb-3">
-            <span className="hidden text-xs text-ink-3 sm:inline">⌘ + ↵ 发送</span>
-            {!ready && <span className="text-xs text-ink-3">先选出发点</span>}
+          {/*
+            右侧这三样都在回答「旁边这个键」：
+              「先选出发点」→ 它为什么按不动（ink-2，更实）
+              「⌘ + ↵ 发送」→ 它怎么用（ink-3，更弱）
+            紧挨着键排，而不是各自缩在卡片两端 —— 原先那句话解释的正是这个键，
+            却离它隔着一整行。
+            发送提示在窄屏上省掉（手机没有 ⌘ 键），状态提示不能省。
+          */}
+          <div className="flex items-center gap-2.5 px-4 pb-3.5 pt-2.5">
+            <span className="flex-1" />
+            {!ready && <span className="shrink-0 text-xs text-ink-2">先选出发点</span>}
+            <span className="hidden shrink-0 text-xs text-ink-3 sm:inline">⌘ + ↵ 发送</span>
             <button
               type="button"
               onClick={submit}
               aria-label="帮我推荐"
               title="帮我推荐"
-              className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
                 ready
                   ? 'bg-jade text-white hover:bg-jade-deep active:scale-95'
                   : 'cursor-not-allowed bg-mist-2 text-ink-3'
@@ -302,88 +303,13 @@ export default function Home() {
               <SparkleIcon className="h-5 w-5" />
             </button>
           </div>
-
-          <div className="flex items-center gap-3 border-t border-line px-5 py-3">
-            <PinIcon />
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-ink-3">出发点</div>
-              <div
-                className={`mt-0.5 truncate text-[13.5px] font-medium ${
-                  ready ? 'text-ink' : 'text-ink-3'
-                }`}
-              >
-                {ready ? label || '已选位置' : '还没选'}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={useGeolocation}
-              disabled={locating}
-              className="h-9 shrink-0 rounded-sm border border-line-2 bg-surface px-3 text-[13px] text-ink transition-colors hover:border-ink-3 disabled:cursor-not-allowed disabled:text-ink-3"
-            >
-              {locating ? '定位中…' : '用我的位置'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPicking(true)}
-              className="h-9 shrink-0 rounded-sm border border-line-2 bg-surface px-3 text-[13px] text-ink transition-colors hover:border-ink-3"
-            >
-              地图选点
-            </button>
-          </div>
-
         </div>
 
-        {/* 这些参数对结果影响很大，但不该吓退第一次输入的人 —— 所以默认收起来 */}
-        <button
-          type="button"
-          onClick={() => setMore((v) => !v)}
-          aria-expanded={more}
-          className="sky-ink-3 mt-4 flex items-center gap-1.5 rounded-xs px-1 py-1 text-[13px] transition-colors"
-        >
-          <span className={`transition-transform ${more ? 'rotate-90' : ''}`} aria-hidden>
-            ▸
-          </span>
-          偏好（不填也行）
-        </button>
-
-        {more && (
-          <div className="anim-fade mt-3 space-y-4 pl-5">
-            <div className="flex items-center gap-3">
-              <div className="sky-ink-3 w-20 shrink-0 text-xs">同行人数</div>
-              <input
-                type="number"
-                min={1}
-                value={prefs.companions ?? ''}
-                onChange={(e) =>
-                  setPrefs({ ...prefs, companions: e.target.value ? Number(e.target.value) : null })
-                }
-                placeholder="留空则由 skill 按默认处理"
-                className="h-10 min-w-0 flex-1 rounded-sm border border-line-2 px-3 text-sm outline-none placeholder:text-ink-3 focus:border-jade focus:ring-[3px] focus:ring-jade-50"
-              />
-            </div>
-
-            <ChipGroup
-              label="拥挤容忍度"
-              options={['低', '一般', '无所谓']}
-              selected={prefs.crowdTolerance ? [CROWD_LABEL[prefs.crowdTolerance]] : []}
-              onToggle={(v) => {
-                const next = CROWD_VALUE[v]
-                setPrefs({ ...prefs, crowdTolerance: prefs.crowdTolerance === next ? null : next })
-              }}
-            />
-
-            <div>
-              <div className="sky-ink-3 mb-2 text-xs">想去哪（可选）</div>
-              <input
-                value={prefs.destination}
-                onChange={(e) => setPrefs({ ...prefs, destination: e.target.value })}
-                placeholder="留空则在出发点附近找"
-                className="h-10 w-full rounded-sm border border-line-2 px-3 text-sm outline-none placeholder:text-ink-3 focus:border-jade focus:ring-[3px] focus:ring-jade-50"
-              />
-            </div>
-          </div>
-        )}
+        {/*
+          这些参数对结果影响很大，但不该吓退第一次输入的人 —— 所以收成一行 pill：
+          有值才展开浮层，不再靠「▸ 偏好（不填也行）」这个很弱的入口去揭示它们。
+        */}
+        <PreferencePills prefs={prefs} onChange={setPrefs} />
 
         {/* 定位失败是「这条路的出口在别处」，不是操作失败 —— 用中性色，
             旁边的「地图选点」就是那句话的出口 */}

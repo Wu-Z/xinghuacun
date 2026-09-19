@@ -1,7 +1,12 @@
 'use client'
 
 type Props = {
-  label: string
+  /**
+   * 不传就不渲染小标题。
+   * 浮层（PreferencePills）里的标题由浮层自己给 —— 那边还带着输入框和说明，
+   * 标题必须跟它们同宽同排，交给 ChipGroup 会各排各的。
+   */
+  label?: string
   options: string[]
   selected: string[]
   onToggle: (value: string) => void
@@ -14,7 +19,7 @@ type Props = {
 export default function ChipGroup({ label, options, selected, onToggle }: Props) {
   return (
     <div>
-      <div className="sky-ink-3 mb-2 text-xs">{label}</div>
+      {label && <div className="sky-ink-3 mb-2 text-xs">{label}</div>}
       <div className="flex flex-wrap gap-2">
         {options.map((o) => {
           const on = selected.includes(o)
