@@ -30,5 +30,12 @@ export type VerifyProvider = {
    * 逆地理编码。label 是给人看的「你所在的那一片」，形如
    * 「厦门市集美区软件园B区」—— 市 + 区 + 区域名，不含门牌号。
    */
-  reverseGeocode(point: LatLng): Promise<{ label: string; city: string }>
+  /**
+   * 逆地理编码。label 是给人看的「你所在的那一片」，形如
+   * 「厦门市集美区软件园B区」—— 市 + 区 + 区域名，不含门牌号。
+   *
+   * adcode 是同一份响应里顺手带出来的：高德查天气要的是城市编码而不是城市名，
+   * 而有 adcode 就不必再去一次行政区划接口。拿不到时允许为空。
+   */
+  reverseGeocode(point: LatLng): Promise<{ label: string; city: string; adcode?: string }>
 }

@@ -90,6 +90,7 @@ export const amapVerifyProvider: VerifyProvider = {
         addressComponent?: {
           province?: unknown
           city?: unknown
+          adcode?: unknown
           district?: unknown
           township?: unknown
           streetNumber?: unknown
@@ -122,6 +123,7 @@ export const amapVerifyProvider: VerifyProvider = {
         township: asText(comp?.township),
       }),
       city: cityText || asText(comp?.province),
+      adcode: asText(comp?.adcode) || undefined,
     }
   },
 }

@@ -29,6 +29,6 @@ export const mockVerifyProvider: VerifyProvider = {
   },
 
   async reverseGeocode() {
-    return { label: '示例市中心区域', city: '示例市' }
+    return { label: '示例市中心区域', city: '示例市', adcode: '000000' }
   },
 }
