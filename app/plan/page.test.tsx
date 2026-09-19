@@ -400,9 +400,15 @@ describe('结果页 · 下一步引导', () => {
     )
   })
 
-  it('地图上的顺序卡只在列表页压着，切到行程页就收起来', async () => {
-    // 行程页的时间轴已经把顺序（第 N 站）与汇总（路上共 …）说完了，
-    // 同一张卡再压在地图顶部，盖住的正是行程页要看的地图
+  it('地图上不再压「1→2→3」顺序卡 —— 两个视图都不出现', async () => {
+    // 这张卡曾经挂在列表页的地图顶部。撤掉是因为它占的正是地图上半部
+    // 唯一被遮住的地方，而它带的信息都有别处承载：编号在地图标记与
+    // 列表卡片的圆圈上，汇总数字在行程页的「路上共 …」，
+    // 未规划出来的路段在时间轴的琥珀提示里。
+    //
+    // 断言必须发生在「路线真的算完」之后 —— 卡当初就是那一刻冒出来的，
+    // 早一步断言等于什么都没钉住。路线算完的证据在行程页（列表页现在
+    // 没有任何东西依赖 route，路线只画在地图上，没有可断言的文字）。
     nextResponses = [streamOf([COMPOSITE, PLAIN])]
     render(<PlanPage />)
     await waitForCards(2)
@@ -410,15 +416,13 @@ describe('结果页 · 下一步引导', () => {
     await clickButton(/选择 集美学村/)
     await clickButton(/选择 海堤路/)
 
-    // 列表页：路线算完后这张卡是带汇总的完整形态
-    await waitFor(() => expect(screen.getByText(/拜访顺序/)).toBeTruthy(), { timeout: 3000 })
-
     await clickButton(/看行程/)
     await waitFor(() => expect(screen.getByText(/路上共/)).toBeTruthy(), { timeout: 3000 })
     expect(screen.queryByText(/拜访顺序/)).toBeNull()
 
-    // 切回列表要回来 —— 要的是「只在列表页」，不是「看过一次就没了」
+    // 回到卡原来所在的那个视图再确认一次
     fireEvent.click(screen.getByRole('button', { name: '列表' }))
-    await waitFor(() => expect(screen.getByText(/拜访顺序/)).toBeTruthy())
+    await waitForCards(2)
+    expect(screen.queryByText(/拜访顺序/)).toBeNull()
   })
 })

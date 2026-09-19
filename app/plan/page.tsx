@@ -6,7 +6,6 @@ import FollowupBar from '@/components/FollowupBar'
 import MapCanvas from '@/components/MapCanvas'
 import PlaceCardSkeleton from '@/components/PlaceCardSkeleton'
 import RecommendList from '@/components/RecommendList'
-import RouteSummaryBar from '@/components/RouteSummaryBar'
 import SelectionTray from '@/components/SelectionTray'
 import SparkleIcon from '@/components/SparkleIcon'
 import StopDetail from '@/components/StopDetail'
@@ -627,6 +626,11 @@ export default function PlanPage() {
         />
       </aside>
 
+      {/*
+        地图上原来压着一张「1→2→3」顺序卡。已经撤掉：
+        它是地图上半部唯一被遮住的地方，而编号本来就丢不了 ——
+        地图标记和列表卡片上的圆圈都带着。汇总数字在行程页有（「路上共 …」）。
+      */}
       <div className="relative h-[38vh] shrink-0 md:h-auto md:min-h-0 md:flex-1">
         <MapCanvas
           origin={draft.point}
@@ -636,13 +640,6 @@ export default function PlanPage() {
           picking={false}
           onPickLocation={() => undefined}
         />
-        {/*
-          顺序卡只压在列表页的地图上。
-          行程页已经有「第 N 站」、每段的时长里程和「路上共 …」，
-          再压一张同样内容的卡只是把地图上半部盖住 —— 而地图恰恰是行程页要看的东西。
-          编号本身不丢：地图标记和列表卡片上的圆圈都带着。
-        */}
-        {view === 'list' && <RouteSummaryBar visitOrder={visitOrder} route={route} />}
       </div>
 
       {/* 终点选点：全屏浮层，选完即关（与首页的地图选点同一套做法） */}
