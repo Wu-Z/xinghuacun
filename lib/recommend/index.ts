@@ -6,7 +6,9 @@ import type {
   RecommendResult,
   RefineResult,
 } from '@/lib/core/model'
+import { describeTonight, describeWeather, type Weather } from '@/lib/core/weather'
 import { getVerifyProvider } from '@/lib/providers/verify'
+import { getWeatherProvider } from '@/lib/providers/weather'
 import { callDeepseekJson } from './deepseek'
 import { mockSkillOutput } from './mock'
 import { parseSkillOutput } from './schema'
@@ -26,13 +28,26 @@ function loadPrompt(): string {
 export function buildUserMessage(
   req: RecommendRequest,
   place: { label: string; city: string },
+  weather: Weather | null = null,
 ): string {
-  const lines = [
+  const lines: (string | null)[] = [
     `任务：${req.task}`,
     `位置：${place.label}（城市 ${place.city}）`,
     req.origin.point
       ? `坐标：${req.origin.point.lng},${req.origin.point.lat}（坐标系 GCJ-02）`
       : '坐标：无，请以位置名称为准',
+    /*
+     * 天气由平台实测后再喂进来，不由 skill 自己查 —— 它没有任何可用工具，
+     * 让它「查天气」等于让它凭记忆编。
+     *
+     * 拿不到就整行不给，而不是给一句「天气未知」：空更能触发 prompt 里
+     * 「没有这一行就别据此调整」的那条规则，写上「未知」反而可能诱导它补一个。
+     */
+    weather
+      ? `天气（平台实测，更新时间 ${weather.reportTime}）：${weather.city} ${describeWeather(weather)}${
+          describeTonight(weather) ? `，${describeTonight(weather)}` : ''
+        }`
+      : null,
     `目的地：${
       req.destination.mode === 'specified' && req.destination.requested
         ? req.destination.requested
@@ -75,11 +90,32 @@ export function buildUserMessage(
     )
   }
 
-  return lines.join('\n')
+  return lines.filter((line): line is string => line !== null).join('\n')
 }
 
 function isMock(): boolean {
   return process.env.RECOMMEND_PROVIDER === 'mock'
+}
+
+/** 逆地理编码的结果，外加查天气要用的 adcode */
+type Place = { label: string; city: string; adcode?: string }
+
+/**
+ * 取天气，喂给 skill。
+ *
+ * 失败返回 null 而不是抛：拿不到天气不拦推荐，只是那条天气行不发。
+ * prompt 里有一条规则专门管「没有天气行」这种情况 —— 让 skill 别自己猜。
+ */
+async function getWeather(adcode?: string): Promise<Weather | null> {
+  const code = adcode?.trim()
+  if (!code) return null
+
+  try {
+    return await getWeatherProvider().getWeather({ adcode: code })
+  } catch (error) {
+    console.error('[recommend] 天气获取失败，按未知处理', error)
+    return null
+  }
 }
 
 /**
@@ -91,7 +127,8 @@ function isMock(): boolean {
  */
 async function getSkillOutput(
   req: RecommendRequest,
-  place: { label: string; city: string },
+  place: Place,
+  weather: Weather | null,
 ): Promise<{ ok: true; raw: unknown } | { ok: false; failure: RecommendFailure }> {
   if (isMock()) {
     return { ok: true, raw: await mockSkillOutput(req) }
@@ -112,7 +149,7 @@ async function getSkillOutput(
     baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
     model,
     system: loadPrompt(),
-    user: buildUserMessage(req, place),
+    user: buildUserMessage(req, place, weather),
     maxTokens,
   })
 
@@ -135,11 +172,11 @@ async function getSkillOutput(
 export async function prepareRecommend(
   req: RecommendRequest,
 ): Promise<
-  | { ok: true; place: { label: string; city: string }; userMessage: string }
+  | { ok: true; place: Place; userMessage: string }
   | { ok: false; failure: RecommendFailure }
 > {
   const verify = getVerifyProvider()
-  let place = { label: '', city: '' }
+  let place: Place = { label: '', city: '' }
 
   if (req.origin.point) {
     try {
@@ -153,14 +190,14 @@ export async function prepareRecommend(
     return { ok: false, failure: { reason: '无法确定出发点所在城市，请换一个位置试试' } }
   }
 
-  return { ok: true, place, userMessage: buildUserMessage(req, place) }
+  return { ok: true, place, userMessage: buildUserMessage(req, place, await getWeather(place.adcode)) }
 }
 
 export async function recommend(req: RecommendRequest): Promise<RecommendOutcome> {
   const verify = getVerifyProvider()
 
   // skill 要「位置名称 + 城市」，而客户端只知道坐标 —— 由服务端逆地理编码补上
-  let place = { label: '', city: '' }
+  let place: Place = { label: '', city: '' }
   if (req.origin.point) {
     try {
       place = await verify.reverseGeocode(req.origin.point)
@@ -173,7 +210,7 @@ export async function recommend(req: RecommendRequest): Promise<RecommendOutcome
     return { ok: false, failure: { reason: '无法确定出发点所在城市，请换一个位置试试' } }
   }
 
-  const skill = await getSkillOutput(req, place)
+  const skill = await getSkillOutput(req, place, await getWeather(place.adcode))
   if (!skill.ok) return { ok: false, failure: skill.failure }
   const raw = skill.raw
 
