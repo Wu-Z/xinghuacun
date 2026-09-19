@@ -60,6 +60,27 @@ describe('withToken', () => {
     expect(withToken('//evil.com/x', 'abc123')).toBe('//evil.com/x')
   })
 
+  it('反斜杠开头也不挂 —— 浏览器把 \\ 当 /，`/\\evil.com/x` 其实指向 evil.com', () => {
+    // 这不是理论问题：URL 标准规定 http/https 这类特殊 scheme 里 \ 与 / 等价，
+    // 所以 `/` + `\` 会被当成 `//`，进入 authority 解析。
+    // 实测 new URL('/\\evil.com/x', 'http://localhost').origin === 'http://evil.com'
+    expect(withToken('/\\evil.com/x', 'abc123')).toBe('/\\evil.com/x')
+  })
+
+  it('换成反斜杠也一样', () => {
+    expect(withToken('\\\\evil.com/x', 'abc123')).toBe('\\\\evil.com/x')
+  })
+
+  it('夹了换行的同样不挂 —— 解析器会把换行去掉，`/\\n/x` 也变成 //x', () => {
+    expect(withToken('/\n/x', 'abc123')).toBe('/\n/x')
+  })
+
+  it('解析不了的路径原样返回，不抛 —— 比如单独一个 `/\\`', () => {
+    // new URL('/\\', base) 会抛 Invalid URL。这里必须兜住：
+    // 这个函数在渲染路径上，抛出去就是页面白屏，而它只是「没挂上令牌」而已
+    expect(withToken('/\\', 'abc123')).toBe('/\\')
+  })
+
   it('不是路径的东西原样返回', () => {
     expect(withToken('javascript:alert(1)', 'abc123')).toBe('javascript:alert(1)')
     expect(withToken('', 'abc123')).toBe('')
