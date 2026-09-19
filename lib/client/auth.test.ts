@@ -45,7 +45,23 @@ describe('withToken', () => {
     expect(withToken('/plan', 'a&b=c')).toBe('/plan?token=a%26b%3Dc')
   })
 
-  it('也吃绝对地址', () => {
-    expect(withToken('https://x.dev/plan', 'abc123')).toBe('https://x.dev/plan?token=abc123')
+  it('绝对地址一律不挂令牌', () => {
+    // 这条以前是反过来的（旧版本会往绝对地址上也挂令牌，还配了个测试「也吃绝对地址」）。
+    // 那等于埋了个雷：这个函数的入参只要有一次来自外部数据 ——
+    // 比如哪天有人写 withToken(place.amapUrl) —— 全站令牌就被送到别人服务器上，
+    // 而且是静默的，因为链接照样能打开。
+    expect(withToken('https://x.dev/plan', 'abc123')).toBe('https://x.dev/plan')
+    expect(withToken('https://uri.amap.com/search?keyword=x', 'abc123')).toBe(
+      'https://uri.amap.com/search?keyword=x',
+    )
+  })
+
+  it('协议相对地址也不挂 —— //evil.com/x 会被浏览器当成别的域', () => {
+    expect(withToken('//evil.com/x', 'abc123')).toBe('//evil.com/x')
+  })
+
+  it('不是路径的东西原样返回', () => {
+    expect(withToken('javascript:alert(1)', 'abc123')).toBe('javascript:alert(1)')
+    expect(withToken('', 'abc123')).toBe('')
   })
 })

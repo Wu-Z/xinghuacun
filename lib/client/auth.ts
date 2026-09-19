@@ -13,8 +13,20 @@ export function currentToken(): string {
   return new URLSearchParams(window.location.search).get(PARAM) ?? ''
 }
 
+/**
+ * 只往「本站的相对路径」上挂令牌：必须以单个 `/` 开头。
+ *
+ * 绝对地址一律原样返回。这条限制看着碍事，但它是这个函数唯一的安全边界 ——
+ * 它接的是一段 URL，而应用里到处是外部链接（place.amapUrl、uri.amap.com 那些）。
+ * 只要哪天有人写 `withToken(place.amapUrl)`，全站令牌就被送到高德服务器上，
+ * 而且**不会有任何报错**：链接照样能打开，只是钥匙已经交出去了。
+ *
+ * `//evil.com/x` 也要挡：协议相对地址在浏览器里是另一个域，不是本站路径。
+ */
 export function withToken(path: string, token: string = currentToken()): string {
   if (!token) return path
+  if (!path.startsWith('/') || path.startsWith('//')) return path
+
   const sep = path.includes('?') ? '&' : '?'
   return `${path}${sep}${PARAM}=${encodeURIComponent(token)}`
 }

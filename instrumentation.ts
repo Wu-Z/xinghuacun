@@ -18,7 +18,10 @@ export function register(): void {
 
   // next dev 把实际端口写进了 PORT —— 显式 -p 和默认 3000 都是
   const port = process.env.PORT || '3000'
-  const url = withToken(`http://localhost:${port}/`, token)
+  // 让 withToken 拼相对的那半段，再补上来源。
+  // 不把整条绝对地址交给它：那个函数只认相对路径（见它的注释），
+  // 这儿要是绕过它自己拼 `?token=`，就把「编码逻辑只有一处」这条给破坏了
+  const url = `http://localhost:${port}${withToken('/', token)}`
 
   console.log(`\n  带令牌的地址（本地开发直接开这个）：\n  ${url}\n`)
 }
