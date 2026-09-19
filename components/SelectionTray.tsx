@@ -48,22 +48,28 @@ export default function SelectionTray({
         </button>
       )}
 
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 text-[13px] text-ink-2">
+      {/*
+        两个按钮并排等分，中间不留空档。
+        原来「清空」贴左、「看行程」被 ml-auto 推到最右，中间空出一大片 ——
+        一屏最要命的两个动作被拉开到视线两端，手机上还得横跨半个屏幕。
+        计数留在左边当语境，剩下的横向空间均分给两个动作。
+      */}
+      <div className="flex items-center gap-2">
+        <div className="shrink-0 text-[13px] text-ink-2">
           已选 <b className="tnum text-[15px] font-semibold text-ink">{selectedCount}</b> {unit}
         </div>
 
-        <div className="ml-auto flex shrink-0 gap-2">
+        <div className="flex min-w-0 flex-1 gap-2">
           <button
             onClick={onClear}
-            className="h-10 rounded-sm border border-line-2 bg-surface px-3.5 text-[13px] text-ink transition-colors hover:border-ink-3"
+            className="h-11 flex-1 rounded-sm border border-line-2 bg-surface text-[13px] text-ink transition-colors hover:border-ink-3 md:h-10"
           >
             清空
           </button>
           {showViewButton && selectedCount >= 2 && (
             <button
               onClick={onView}
-              className="h-10 rounded-sm bg-jade px-4 text-[13px] font-medium text-white transition-colors hover:bg-jade-deep"
+              className="h-11 flex-1 rounded-sm bg-jade text-[13px] font-medium text-white transition-colors hover:bg-jade-deep md:h-10"
             >
               看行程 →
             </button>
