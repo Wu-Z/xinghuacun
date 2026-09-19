@@ -1,0 +1,148 @@
+/*
+ * 预览页专用样式，刻意用 CSS Module 而不是往 globals.css 里加：
+ * 这是验证工具，不该让它的选择器渗进真实页面。
+ * 与天空层相关的覆写只有一处 —— 见 .stage 下面那段。
+ */
+
+.deck {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 40px 32px 88px;
+}
+
+.head {
+  max-width: 800px;
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  color: var(--color-ink);
+}
+
+.note {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--color-ink-2);
+}
+
+.note code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--color-mist);
+  font-size: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+@media (max-width: 1120px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 格子 = 一个缩小的浏览器窗口 */
+.cell {
+  position: relative;
+  /*
+   * isolation: isolate 把层叠上下文关在格子里。
+   * 天空是 z-index:-1 的（它在真实页面里要沉到内容下面），若不开这一层，
+   * 负 z-index 会跑到整页的层叠顺序里，格子之间就会互相穿透。
+   * 关进来之后，天空只在本格内沉底，本格内容用 z-index:1 稳稳压住它。
+   */
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 20px;
+  box-shadow: 0 12px 34px -22px rgba(4, 10, 18, 0.5);
+}
+
+/*
+ * 撑出「缩放后」的高度。
+ * 必须靠 aspect-ratio 而不是让内容撑：里面那块 1440×900 的画布
+ * 布局尺寸仍是原始的 1440×900，transform 只是视觉缩放，
+ * 若任其撑开，每个格子都会有 900px 高。
+ */
+.frame {
+  width: 100%;
+  aspect-ratio: 1440 / 900;
+}
+
+/* 真正的「视口」：1440×900，整体 scale 到格子大小 */
+.stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  /* 与首页 main 一致：靠上排、栏宽 680、左右 24 / 顶部 96（md:pt-24） */
+  display: flex;
+  justify-content: center;
+  padding: 96px 24px 64px;
+}
+
+/*
+ * ★ 与首页唯一的差异：fixed → absolute。
+ * 除此之外天空的每一行样式都来自 globals.css，没有第二份实现。
+ * 特异性 (0,2,0) 高于 globals 里的 .weather-sky (0,1,0)，
+ * 所以这条稳定生效，不依赖样式表的先后顺序。
+ */
+.stage :global(.weather-sky) {
+  position: absolute;
+  inset: 0;
+}
+
+/* 与首页 .w-full.max-w-[680px] 等价 */
+.body {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 680px;
+}
+
+.card {
+  overflow: hidden;
+}
+
+.placeholder {
+  padding: 16px 20px 8px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-ink-3);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--color-line);
+}
+
+.tonight {
+  padding: 0 20px 12px;
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+}
+
+.tag {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  padding: 3px 9px;
+  border-radius: 999px;
+  /* 深色半透明胶囊：压在任何一种天空上都读得清，不管是正午的白云还是夜里的暗雷 */
+  background: rgba(8, 14, 22, 0.42);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.92);
+}
