@@ -10,7 +10,8 @@ type PoiSearchResponse = {
   pois?: { location?: unknown; name?: unknown; biz_ext?: unknown }[]
 }
 
-function parseLocation(value: unknown): LatLng | null {
+/** 高德把坐标写成 `"120.1,30.2"` 这样一个字符串，空字段是 `[]` */
+export function parseLocation(value: unknown): LatLng | null {
   const text = asText(value)
   if (!text) return null
 

@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import MapCanvas from '@/components/MapCanvas'
+import MapPicker from '@/components/MapPicker'
 import OriginRow from '@/components/OriginRow'
 import PreferencePills from '@/components/PreferencePills'
 import SparkleIcon from '@/components/SparkleIcon'
@@ -318,34 +318,28 @@ export default function Home() {
         )}
       </div>
 
-      {/* 地图选点：全屏浮层，选完即关。首页本体不放地图，免得跟输入框抢注意力 */}
+      {/*
+        地图选点：全屏浮层，选完即关。首页本体不放地图，免得跟输入框抢注意力。
+        可以直接点地图，也可以搜一个地点（搜是后加的：盲点在陌生城市很难点对）。
+      */}
       {picking && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-surface">
-          <div className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
-            <span className="text-sm font-medium text-ink">在地图上点一下，作为出发点</span>
-            <button
-              type="button"
-              onClick={() => setPicking(false)}
-              className="ml-auto rounded-xs px-3 py-1.5 text-sm text-ink-3 transition-colors hover:bg-mist hover:text-ink"
-            >
-              取消
-            </button>
-          </div>
-          <div className="relative flex-1">
-            <MapCanvas
-              origin={null}
-              places={[]}
-              visitOrder={[]}
-              route={null}
-              picking
-              onPickLocation={(p) => {
-                update({ point: p, label: '地图所选位置' })
-                setPicking(false)
-                setError(null)
-              }}
-            />
-          </div>
-        </div>
+        <MapPicker
+          target="出发点"
+          near={point}
+          initial={point ? { point, label: label || '已选位置' } : null}
+          onConfirm={(p, name, source) => {
+            update({ point: p, label: name })
+            setPicking(false)
+            setError(null)
+            /*
+             * 手点地图选出来的只有坐标，补一次逆地理编码给它一个人话名字。
+             * 搜索与定位**不补**：搜到的 POI 名（「集美万达广场」）比逆地理编码
+             * 能给的说法（「银江路」）更接近用户心里那个地方，覆盖掉是退步。
+             */
+            if (source === 'map-pick') void namePlace(p)
+          }}
+          onClose={() => setPicking(false)}
+        />
       )}
     </main>
   )
