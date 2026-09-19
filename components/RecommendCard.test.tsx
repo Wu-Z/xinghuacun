@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RecommendPlace } from '@/lib/core/model'
 import RecommendCard from './RecommendCard'
@@ -21,12 +21,19 @@ function place(over: Partial<RecommendPlace> = {}): RecommendPlace {
   }
 }
 
-function renderCard(p: RecommendPlace, order: number | null = null, busy = false) {
+function renderCard(
+  p: RecommendPlace,
+  order: number | null = null,
+  busy = false,
+  extra: { hovered?: boolean; onHover?: (name: string | null) => void } = {},
+) {
   return render(
     <RecommendCard
       place={p}
       order={order}
       busy={busy}
+      hovered={extra.hovered}
+      onHover={extra.onHover}
       onToggle={vi.fn()}
       onOpenDetail={vi.fn()}
       onAsk={vi.fn()}
@@ -142,5 +149,59 @@ describe('RecommendCard · 距离标注', () => {
   it('距离必须标出「直线」，免得被当成行车里程', () => {
     renderCard(place({ distanceMeters: 2400 }))
     expect(screen.getByText(/2\.4 公里 · 直线/)).toBeTruthy()
+  })
+})
+
+describe('RecommendCard · 被指着（列表与地图之间那条线）', () => {
+  const cardOf = (container: HTMLElement) => container.querySelector('[data-place="海堤路"]')!
+
+  it('鼠标进入报出名字、离开报 null', () => {
+    const onHover = vi.fn()
+    const { container } = renderCard(place({ name: '海堤路' }), null, false, { onHover })
+
+    fireEvent.mouseOver(cardOf(container))
+    expect(onHover).toHaveBeenLastCalledWith('海堤路')
+
+    fireEvent.mouseOut(cardOf(container))
+    expect(onHover).toHaveBeenLastCalledWith(null)
+  })
+
+  it('键盘焦点落在卡片里也算指着它 —— 只做鼠标的话，键盘用户看不到「地图上那个点是它」', () => {
+    const onHover = vi.fn()
+    renderCard(place({ name: '海堤路' }), null, false, { onHover })
+
+    fireEvent.focus(screen.getByRole('button', { name: '详情' }))
+    expect(onHover).toHaveBeenLastCalledWith('海堤路')
+  })
+
+  it('被指着时画一圈内描边，不换底色', () => {
+    // 底色在这个列表里已经有两种含义（玉色底 = 已选、斜纹 = 未核实），
+    // 再借它去说第三件事（「我正指着它」）就会混
+    const quiet = renderCard(place({ name: '海堤路' }))
+    expect(cardOf(quiet.container).hasAttribute('data-pointed')).toBe(false)
+    expect(cardOf(quiet.container).innerHTML).not.toContain('inset_0_0_0_2px')
+    cleanup()
+
+    const loud = renderCard(place({ name: '海堤路' }), null, false, { hovered: true })
+    expect(cardOf(loud.container).hasAttribute('data-pointed')).toBe(true)
+    expect(cardOf(loud.container).innerHTML).toContain('inset_0_0_0_2px')
+  })
+
+  it('被指着的还是那条地点 —— 联动不能顺手改动勾选状态', () => {
+    const onToggle = vi.fn()
+    render(
+      <RecommendCard
+        place={place({ name: '海堤路' })}
+        order={null}
+        busy={false}
+        hovered
+        onToggle={onToggle}
+        onOpenDetail={vi.fn()}
+        onAsk={vi.fn()}
+      />,
+    )
+
+    // 悬停只是「指着看」，点下去才算数
+    expect(onToggle).not.toHaveBeenCalled()
   })
 })

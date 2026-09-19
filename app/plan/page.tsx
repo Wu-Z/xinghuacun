@@ -95,6 +95,14 @@ export default function PlanPage() {
   const [selectedOrder, setSelectedOrder] = useState<string[]>([])
   const [routeState, setRouteState] = useState<{ key: string; route: Route } | null>(null)
   const [detailName, setDetailName] = useState<string | null>(null)
+  /**
+   * 列表与地图之间那条线：正被指着的是哪一条。
+   *
+   * 两个方向共用这一个状态 —— 鼠标停在列表某张卡上、或者停在地图某个点上，
+   * 说的都是同一件事「我现在说的是这一个」。分开存两份就会出现
+   * 「地图亮着 A、列表亮着 B」这种自相矛盾的画面。
+   */
+  const [hoverName, setHoverName] = useState<string | null>(null)
 
   /** 终点。默认不设 —— 用户不去别处时末站就是结束 */
   const [end, setEnd] = useState<{ point: LatLng; label: string } | null>(null)
@@ -182,6 +190,8 @@ export default function PlanPage() {
         setSelectedOrder([])
         setDetailName(null)
         setAskTarget(null)
+        // 整份列表要换掉了：留着上次那条的名字，可能会点亮同名的**新**卡片
+        setHoverName(null)
       }
 
       const acc: RecommendPlace[] = []
@@ -656,6 +666,8 @@ export default function PlanPage() {
                 busy={busy}
                 finalizeNote={finalizeNote}
                 viewSwitch={itinerary ? { view: 'list', onChange: setView } : undefined}
+                hovered={hoverName}
+                onHover={setHoverName}
                 onToggle={togglePlace}
                 onOpenDetail={setDetailName}
                 onAsk={(name) => setAskTarget({ name })}
@@ -698,6 +710,10 @@ export default function PlanPage() {
         地图上原来压着一张「1→2→3」顺序卡。已经撤掉：
         它是地图上半部唯一被遮住的地方，而编号本来就丢不了 ——
         地图标记和列表卡片上的圆圈都带着。汇总数字在行程页有（「路上共 …」）。
+
+        地图画的也不再只是勾中的那几个：列表里**核实通过的**地点全在上面
+        （备选是空心点、已选带编号），否则「能上图」那句话只兑现了一半 ——
+        用户看着一张推荐列表，却不知道它们各自在哪。
       */}
       <div className="relative h-[38vh] shrink-0 md:h-auto md:min-h-0 md:flex-1">
         <MapCanvas
@@ -707,6 +723,9 @@ export default function PlanPage() {
           route={route}
           picking={false}
           onPickLocation={() => undefined}
+          highlightName={hoverName}
+          onHighlight={setHoverName}
+          onMarkerClick={setDetailName}
         />
       </div>
 

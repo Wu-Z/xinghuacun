@@ -15,6 +15,13 @@ type Props = {
    * 「详情」不受影响：它是只读的，锁它只会让人觉得页面卡了。
    */
   busy: boolean
+  /**
+   * 鼠标（或键盘焦点）正指着它 —— 可能是列表里指过来的，也可能是地图上
+   * 指着那个点指过来的。两种来源用同一个状态：它们是同一件事。
+   */
+  hovered?: boolean
+  /** 指着这一条 / 离开这一条（离开传 null）。调用方拿它去点亮地图上的点 */
+  onHover?: (name: string | null) => void
   onToggle: (name: string) => void
   onOpenDetail: (name: string) => void
   onAsk: (name: string) => void
@@ -27,7 +34,16 @@ function Sep() {
   return <span className="text-line-2">·</span>
 }
 
-export default function RecommendCard({ place, order, busy, onToggle, onOpenDetail, onAsk }: Props) {
+export default function RecommendCard({
+  place,
+  order,
+  busy,
+  hovered,
+  onHover,
+  onToggle,
+  onOpenDetail,
+  onAsk,
+}: Props) {
   const selectable = place.verified
   const selected = order !== null
 
@@ -41,10 +57,37 @@ export default function RecommendCard({ place, order, busy, onToggle, onOpenDeta
 
   return (
     <div
+      /*
+       * data-place 是这一条的身份：地图上那个点要找回列表里的哪一张卡，
+       * 靠的就是它（两边共用同一个名字，跟编号同源的道理一样）。
+       */
+      data-place={place.name}
+      data-pointed={hovered ? 'true' : undefined}
+      /*
+       * 悬停与键盘焦点走同一套：焦点落在卡片里任何一个按钮上都算「正指着它」。
+       * 只做鼠标的话，键盘用户就看不到「地图上那个点是它」这条线索了。
+       */
+      onMouseEnter={() => onHover?.(place.name)}
+      onMouseLeave={() => onHover?.(null)}
+      onFocus={() => onHover?.(place.name)}
+      onBlur={() => onHover?.(null)}
       className={`anim-fade relative flex gap-3 px-4 py-4 transition-colors ${
         selected ? 'bg-jade-50' : selectable ? 'hover:bg-paper' : 'stripe-locked'
       }`}
     >
+      {/*
+        被指到的那条画一圈内描边。
+        用描边而不是换底色：底色在这个列表里已经有两种含义了
+        （玉色底 = 已选、斜纹 = 未核实），再借它去说第三件事就会混。
+        描边是中性的一层，压在任何底色上都不冲突。
+      */}
+      {hovered && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 shadow-[inset_0_0_0_2px_var(--color-jade-100)]"
+        />
+      )}
+
       {selected && <span className="absolute inset-y-0 left-0 w-[3px] bg-jade" aria-hidden />}
 
       {/*

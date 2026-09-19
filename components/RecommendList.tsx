@@ -20,6 +20,10 @@ type Props = {
   finalizeNote: { before: number; selected: number; after: number } | null
   /** 有路线可看时才给切换（传了才渲染），否则这两个标签点了没反应 */
   viewSwitch?: { view: 'list' | 'timeline'; onChange: (view: 'list' | 'timeline') => void }
+  /** 正被指着的那一条（可能是从地图上指过来的） */
+  hovered?: string | null
+  /** 指着某一条 / 离开（传 null）。调用方拿它去点亮地图上对应的点 */
+  onHover?: (name: string | null) => void
   onToggle: (name: string) => void
   onOpenDetail: (name: string) => void
   onAsk: (name: string | null) => void
@@ -107,6 +111,8 @@ export default function RecommendList({
   busy,
   finalizeNote,
   viewSwitch,
+  hovered,
+  onHover,
   onToggle,
   onOpenDetail,
   onAsk,
@@ -125,6 +131,8 @@ export default function RecommendList({
         place={p}
         order={i === -1 ? null : i + 1}
         busy={busy}
+        hovered={hovered === p.name}
+        onHover={onHover}
         onToggle={onToggle}
         onOpenDetail={onOpenDetail}
         onAsk={onAsk}

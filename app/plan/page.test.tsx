@@ -1,10 +1,22 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RecommendPlace } from '@/lib/core/model'
 
-// 地图在 jsdom 里跑不起来（要加载高德 JS API），而且它跟这里要测的状态机无关
-vi.mock('@/components/MapCanvas', () => ({ default: () => null }))
+/**
+ * 地图在 jsdom 里跑不起来（要加载高德 JS API），而且它跟这里要测的状态机无关。
+ *
+ * 但要留一份 props 快照：列表与地图之间那条悬停的线必须验到 ——
+ * 「地图收到的到底是不是列表里正指着的那一条」，除了这儿没别的地方看得到。
+ * 真画出来的东西（空心点、编号、光晕）在 RouteOverlay 的测试里验。
+ */
+const mapProps = vi.hoisted(() => ({ current: null as unknown }))
+vi.mock('@/components/MapCanvas', () => ({
+  default: (props: unknown) => {
+    mapProps.current = props
+    return null
+  },
+}))
 
 const planRef: { current: unknown } = { current: null }
 /**
@@ -563,5 +575,60 @@ describe('结果页 · 分享行程', () => {
 
     expect(await screen.findByRole('dialog', { name: '行程分享卡' })).toBeTruthy()
     expect(mocks.patchShare).not.toHaveBeenCalled()
+  })
+})
+
+describe('结果页 · 列表与地图同源', () => {
+  /** 地图那一侧收到的 props（上面 mock 里存下的最后一份） */
+  const map = () =>
+    mapProps.current as {
+      places?: RecommendPlace[]
+      highlightName?: string | null
+      onHighlight?: (name: string | null) => void
+      onMarkerClick?: (name: string) => void
+    }
+
+  const cardOf = (name: string) =>
+    document.querySelector(`[data-place="${name}"]`) as HTMLElement
+
+  async function twoCards() {
+    nextResponses = [streamOf([COMPOSITE, PLAIN])]
+    render(<PlanPage />)
+    await waitForCards(2)
+  }
+
+  it('整份列表都交给地图 —— 不是只给勾中的那几个', async () => {
+    await twoCards()
+
+    expect(map().places?.map((p) => p.name)).toEqual(['集美学村', '海堤路'])
+    expect(map().highlightName).toBeNull()
+  })
+
+  it('鼠标停在列表某条上，地图收到的就是同一条', async () => {
+    // 列表十几条、地图十几个点，中间没有这条线的话，用户看得见一个点
+    // 却不知道它是哪一条
+    await twoCards()
+
+    fireEvent.mouseOver(cardOf('海堤路'))
+    await waitFor(() => expect(map().highlightName).toBe('海堤路'))
+
+    fireEvent.mouseOut(cardOf('海堤路'))
+    await waitFor(() => expect(map().highlightName).toBeNull())
+  })
+
+  it('反过来：鼠标停在地图的某个点上，列表里那一条跟着亮', async () => {
+    await twoCards()
+
+    act(() => map().onHighlight?.('集美学村'))
+    await waitFor(() => expect(cardOf('集美学村').hasAttribute('data-pointed')).toBe(true))
+    // 只亮一个 —— 两个方向共用一个状态，不该出现「地图亮 A、列表亮 B」
+    expect(cardOf('海堤路').hasAttribute('data-pointed')).toBe(false)
+  })
+
+  it('点地图上的标记就是打开那条的详情', async () => {
+    await twoCards()
+
+    act(() => map().onMarkerClick?.('海堤路'))
+    expect(await screen.findByRole('heading', { name: '海堤路' })).toBeTruthy()
   })
 })
